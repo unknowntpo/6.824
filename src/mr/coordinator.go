@@ -73,7 +73,7 @@ func (r *rpcMailBox) Serve() {
 func (r *rpcMailBox) Done() bool {
 	// hang here forever
 	// TODO: Handle this done check
-	return false
+	return true
 }
 
 func (r *rpcMailBox) Example(args *ExampleArgs, reply *ExampleReply) error {

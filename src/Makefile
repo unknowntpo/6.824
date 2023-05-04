@@ -13,3 +13,7 @@ mr/build/seq:
 	-rm ./main/mr-out*
 	go run ./main/mrsequential.go wc.so ./main/pg*.txt
 	more mr-out-0
+
+## mr/test/once: run main/test-mr.sh
+mr/test/once:
+	cd main && bash test-mr.sh
