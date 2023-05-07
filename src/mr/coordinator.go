@@ -32,10 +32,18 @@ func (c *Coordinator) Done() bool {
 	return c.mailBox.Done()
 }
 
+func NewLocalCoordinator() *Coordinator {
+	m := &localMailBox{}
+	c := Coordinator{mailBox: m}
+	c.server()
+
+	return &c
+}
+
 // create a Coordinator.
 // main/mrcoordinator.go calls this function.
 // nReduce is the number of reduce tasks to use.
-func MakeCoordinator(files []string, nReduce int) *Coordinator {
+func NewRPCCoordinator(files []string, nReduce int) *Coordinator {
 	m := &rpcMailBox{}
 	c := Coordinator{mailBox: m}
 
@@ -51,7 +59,23 @@ type MailBox interface {
 	Example(args *ExampleArgs, reply *ExampleReply) error
 }
 
-type chanMailBox struct {
+type localMailBox struct {
+}
+
+func (r *localMailBox) Serve() {
+	// init with for select
+	return
+}
+
+func (r *localMailBox) Done() bool {
+	// hang here forever
+	// TODO: Handle this done check
+	return true
+}
+
+func (r *localMailBox) Example(args *ExampleArgs, reply *ExampleReply) error {
+	reply.Y = args.X + 1
+	return nil
 }
 
 type rpcMailBox struct {

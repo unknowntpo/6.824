@@ -21,11 +21,17 @@ func ihash(key string) int {
 	return int(h.Sum32() & 0x7fffffff)
 }
 
+type MapFn func(string, string) []KeyValue
+type ReduceFn func(string, []string) string
+
 // main/mrworker.go calls this function.
 func Worker(
-	mapf func(string, string) []KeyValue,
-	reducef func(string, []string) string,
+	mapf MapFn,
+	reducef ReduceFn,
 ) {
+
+	// init new worker
+	// // call example
 
 	// Your worker implementation here.
 
@@ -33,6 +39,24 @@ func Worker(
 	CallExample()
 
 }
+
+type worker interface {
+	IsHealthy() bool
+	Work(MapFn, ReduceFn) error
+}
+
+func NewLocalWorker(c *Coordinator) worker {
+	return &localWorker{c: c}
+}
+
+type localWorker struct {
+	c *Coordinator
+}
+
+func (l *localWorker) IsHealthy() bool                         { return false }
+func (l *localWorker) Work(mapf MapFn, reducef ReduceFn) error { return nil }
+
+type rpcWorker struct{}
 
 // example function to show how to make an RPC call to the coordinator.
 //
