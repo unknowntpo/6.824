@@ -8,7 +8,7 @@ import "net/http"
 
 type Coordinator struct {
 	// Your definitions here.
-	mailBox MailBox
+	MailBox CoorMailBox
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -21,21 +21,26 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	return nil
 }
 
+func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) error {
+	reply.Y = args.X + 1
+	return nil
+}
+
 // start a thread that listens for RPCs from worker.go
-func (c *Coordinator) server() {
-	c.mailBox.Serve()
+func (c *Coordinator) Serve() {
+	c.MailBox.Serve()
 }
 
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
-	return c.mailBox.Done()
+	return c.MailBox.Done()
 }
 
 func NewLocalCoordinator() *Coordinator {
 	m := &localMailBox{}
-	c := Coordinator{mailBox: m}
-	c.server()
+	c := Coordinator{MailBox: m}
+	c.Serve()
 
 	return &c
 }
@@ -45,16 +50,17 @@ func NewLocalCoordinator() *Coordinator {
 // nReduce is the number of reduce tasks to use.
 func NewRPCCoordinator(files []string, nReduce int) *Coordinator {
 	m := &rpcMailBox{}
-	c := Coordinator{mailBox: m}
+	c := Coordinator{MailBox: m}
 
 	// Your code here.
 
-	c.server()
+	c.Serve()
 	return &c
 }
 
-type MailBox interface {
+type CoorMailBox interface {
 	Serve()
+	GetJobs() []Job
 	Done() bool
 	Example(args *ExampleArgs, reply *ExampleReply) error
 }
@@ -65,6 +71,10 @@ type localMailBox struct {
 func (r *localMailBox) Serve() {
 	// init with for select
 	return
+}
+
+func (r *localMailBox) GetJobs() []Job {
+	return []Job{}
 }
 
 func (r *localMailBox) Done() bool {
@@ -92,6 +102,10 @@ func (r *rpcMailBox) Serve() {
 		log.Fatal("listen error:", e)
 	}
 	go http.Serve(l, nil)
+}
+
+func (r *rpcMailBox) GetJobs() []Job {
+	return []Job{}
 }
 
 func (r *rpcMailBox) Done() bool {

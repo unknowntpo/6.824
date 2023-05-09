@@ -17,3 +17,7 @@ mr/build/seq:
 ## mr/test/once: run main/test-mr.sh
 mr/test/once:
 	cd main && bash test-mr.sh
+
+## mr/test/unit: run unit tests for worker and coordinator
+mr/test/unit:
+	go test -v ./main/mrworker_test.go

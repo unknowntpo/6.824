@@ -25,7 +25,7 @@ type MapFn func(string, string) []KeyValue
 type ReduceFn func(string, []string) string
 
 // main/mrworker.go calls this function.
-func Worker(
+func Work(
 	mapf MapFn,
 	reducef ReduceFn,
 ) {
@@ -40,21 +40,25 @@ func Worker(
 
 }
 
-type worker interface {
+type Job struct{}
+
+type Worker interface {
 	IsHealthy() bool
 	Work(MapFn, ReduceFn) error
+	Shutdown()
 }
 
-func NewLocalWorker(c *Coordinator) worker {
-	return &localWorker{c: c}
+func NewLocalWorker(m *CoorMailBox) Worker {
+	return &localWorker{coMailBox: m}
 }
 
 type localWorker struct {
-	c *Coordinator
+	coMailBox *CoorMailBox
 }
 
 func (l *localWorker) IsHealthy() bool                         { return false }
 func (l *localWorker) Work(mapf MapFn, reducef ReduceFn) error { return nil }
+func (l *localWorker) Shutdown()                               { return }
 
 type rpcWorker struct{}
 
