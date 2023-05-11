@@ -24,7 +24,8 @@ type ExampleReply struct {
 
 // Add your RPC definitions here.
 type WordCountArgs struct {
-	X int
+	X         int
+	FileNames []string
 }
 
 type WordCountReply struct {

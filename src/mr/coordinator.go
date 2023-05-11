@@ -1,14 +1,31 @@
 package mr
 
-import "log"
-import "net"
-import "os"
-import "net/rpc"
-import "net/http"
+import (
+	"io"
+	"log"
+	"net"
+	"net/http"
+	"net/rpc"
+	"os"
+)
 
 type Coordinator struct {
 	// Your definitions here.
-	MailBox CoorMailBox
+	JobQueue JobQueue
+	MailBox  CoorMailBox
+}
+
+type JobQueue struct {
+	ch chan Job
+}
+
+func NewLocalJobQueue(capacity int) JobQueue {
+  return JobQueue{ch: make(chan Job, capcapacity)}
+}
+
+func (j *JobQueue) Submit(job Job) error {
+	j.ch <- job
+	return nil
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -22,6 +39,13 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 }
 
 func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) error {
+	for _, fileName := range args.FileNames {
+		// assign job for every file
+		job := NewJob(fileName, TYPE_MAP)
+		if err := c.JobQueue.Submit(job); err != nil {
+			return err
+		}
+	}
 	reply.Y = args.X + 1
 	return nil
 }
@@ -37,9 +61,12 @@ func (c *Coordinator) Done() bool {
 	return c.MailBox.Done()
 }
 
+const DefaultJobQueueCap
+
 func NewLocalCoordinator() *Coordinator {
 	m := &localMailBox{}
 	c := Coordinator{MailBox: m}
+  c.JobQueue := NewLocalJobQueue(DefaultJobQueueCap)
 	c.Serve()
 
 	return &c

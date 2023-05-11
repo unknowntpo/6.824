@@ -40,7 +40,21 @@ func Work(
 
 }
 
-type Job struct{}
+type Job struct {
+	FileName string
+	JobType  JobType
+}
+
+type JobType int
+
+const (
+	TYPE_MAP JobType = iota
+	TYPE_REDUCE
+)
+
+func NewJob(fileName string, jobType JobType) Job {
+	return Job{FileName: fileName, JobType: jobType}
+}
 
 type Worker interface {
 	IsHealthy() bool
