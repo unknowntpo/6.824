@@ -1,18 +1,22 @@
 package mr
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"net/rpc"
 	"os"
+
+	"github.com/google/uuid"
 )
 
 type Coordinator struct {
 	// Your definitions here.
 	JobQueue JobQueue
 	MailBox  CoorMailBox
+
 }
 
 type JobQueue struct {
@@ -61,6 +65,13 @@ func (c *Coordinator) Done() bool {
 	return c.MailBox.Done()
 }
 
+func (c *Coordinator) GetJobs(id WorkerID) ([]Job, error) {
+  // Take jobs batch of jobs from c.jobQueue
+  // append c.WorkerMap
+  // return Jobs
+  return []Job, nil
+}
+
 const DefaultJobQueueCap
 
 func NewLocalCoordinator() *Coordinator {
@@ -87,21 +98,25 @@ func NewRPCCoordinator(files []string, nReduce int) *Coordinator {
 
 type CoorMailBox interface {
 	Serve()
-	GetJobs() []Job
+	GetJobs(id WorkerID) ([]Job, error)
 	Done() bool
 	Example(args *ExampleArgs, reply *ExampleReply) error
 }
 
 type localMailBox struct {
+  coorService *Coordinator
 }
 
 func (r *localMailBox) Serve() {
 	// init with for select
 	return
 }
-
-func (r *localMailBox) GetJobs() []Job {
-	return []Job{}
+func (r *localMailBox) GetJobs(workerID string) ([]Job,error) {
+  jobs , err := l.coorService.GetJobs() 
+  if err !=nil {
+    return fmt.Errorf("failed on l.coorService.GetJobs: %v", err)
+  }
+	return jobs, nil
 }
 
 func (r *localMailBox) Done() bool {

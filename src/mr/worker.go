@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"context"
 	"fmt"
 	"hash/fnv"
 	"log"
@@ -58,21 +59,52 @@ func NewJob(fileName string, jobType JobType) Job {
 
 type Worker interface {
 	IsHealthy() bool
-	Work(MapFn, ReduceFn) error
+	Serve(ctx context.Context) error
 	Shutdown()
 }
 
-func NewLocalWorker(m *CoorMailBox) Worker {
-	return &localWorker{coMailBox: m}
+type WorkerID string
+
+func NewWorkerID() WorkerID {
+	return uuid.NewRandom().String()
+}
+
+func NewLocalWorker(m CoorMailBox, mapFn MapFn, reduceFn ReduceFn) Worker {
+	return &localWorker{
+		ID:        NewWorkerID(),
+		coMailBox: m,
+		mapFn:     mapFn,
+		reduceFn:  reduceFn,
+	}
 }
 
 type localWorker struct {
-	coMailBox *CoorMailBox
+	ID        WorkerID
+	coMailBox CoorMailBox
+	mapFn     MapFn
+	reduceFn  ReduceFn
 }
 
-func (l *localWorker) IsHealthy() bool                         { return false }
-func (l *localWorker) Work(mapf MapFn, reducef ReduceFn) error { return nil }
-func (l *localWorker) Shutdown()                               { return }
+func (l *localWorker) IsHealthy() bool { return true }
+func (l *localWorker) Serve(ctx context.Context) error {
+	for {
+		jobs, err := l.coMailBox.GetJobs(l.ID)
+		if err != nil {
+			log.Println(err)
+		}
+		if err := l.handleJobs(ctx, jobs); err != nil {
+			log.Println(err)
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		default:
+		}
+	}
+}
+
+func (l *localWorker) handleJobs(ctx context.Context, jobs []Job) error { return nil }
+func (l *localWorker) Shutdown()                                        { return }
 
 type rpcWorker struct{}
 

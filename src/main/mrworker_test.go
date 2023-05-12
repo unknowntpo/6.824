@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"testing"
 
 	"6.824/mr"
@@ -24,8 +25,8 @@ var _ = Describe("LocalWorker", func() {
 		}
 		reducef := func(string, []string) string { return "" }
 		coor = mr.NewLocalCoordinator()
-		localWorker = mr.NewLocalWorker(&coor.MailBox)
-		go localWorker.Work(mapf, reducef)
+		localWorker = mr.NewLocalWorker(coor.MailBox, mapf, reducef)
+		go localWorker.Serve(context.Background())
 	})
 
 	AfterEach(func() {
