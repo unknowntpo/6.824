@@ -6,6 +6,8 @@ import (
 	"hash/fnv"
 	"log"
 	"net/rpc"
+
+	uuid "github.com/google/uuid"
 )
 
 // Map functions return a slice of KeyValue.
@@ -66,7 +68,7 @@ type Worker interface {
 type WorkerID string
 
 func NewWorkerID() WorkerID {
-	return uuid.NewRandom().String()
+	return WorkerID(uuid.Must(uuid.NewRandom()).String())
 }
 
 func NewLocalWorker(m CoorMailBox, mapFn MapFn, reduceFn ReduceFn) Worker {
@@ -89,6 +91,7 @@ func (l *localWorker) IsHealthy() bool { return true }
 func (l *localWorker) Serve(ctx context.Context) error {
 	for {
 		jobs, err := l.coMailBox.GetJobs(l.ID)
+		log.Println("WORKER[%v]: got jobs", l.ID, jobs)
 		if err != nil {
 			log.Println(err)
 		}

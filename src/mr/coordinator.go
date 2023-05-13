@@ -2,34 +2,36 @@ package mr
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"net/http"
 	"net/rpc"
 	"os"
-
-	"github.com/google/uuid"
 )
 
 type Coordinator struct {
 	// Your definitions here.
-	JobQueue JobQueue
+	JobQueue *JobQueue
 	MailBox  CoorMailBox
-
+	doneChan chan struct{}
 }
 
 type JobQueue struct {
 	ch chan Job
 }
 
-func NewLocalJobQueue(capacity int) JobQueue {
-  return JobQueue{ch: make(chan Job, capcapacity)}
+func NewLocalJobQueue(capacity int) *JobQueue {
+	return &JobQueue{ch: make(chan Job, capacity)}
 }
 
 func (j *JobQueue) Submit(job Job) error {
 	j.ch <- job
 	return nil
+}
+
+func (j *JobQueue) GetJob() (Job, error) {
+	job := <-j.ch
+	return job, nil
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -54,6 +56,13 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 	return nil
 }
 
+func (c *Coordinator) Wait() {
+	// wait until job finished
+	// there's monitor goroutine who monitor the job progress,
+	// when job is done, close doneChan
+	<-c.doneChan
+}
+
 // start a thread that listens for RPCs from worker.go
 func (c *Coordinator) Serve() {
 	c.MailBox.Serve()
@@ -66,21 +75,24 @@ func (c *Coordinator) Done() bool {
 }
 
 func (c *Coordinator) GetJobs(id WorkerID) ([]Job, error) {
-  // Take jobs batch of jobs from c.jobQueue
-  // append c.WorkerMap
-  // return Jobs
-  return []Job, nil
+	// TODO: Take batch of jobs from jobQueue
+	j, err := c.JobQueue.GetJob()
+	if err != nil {
+		return nil, fmt.Errorf("failed on c.JobQueue.GetJob: %v", err)
+	}
+	return []Job{j}, nil
 }
 
-const DefaultJobQueueCap
+const DefaultJobQueueCap = 10
 
 func NewLocalCoordinator() *Coordinator {
-	m := &localMailBox{}
-	c := Coordinator{MailBox: m}
-  c.JobQueue := NewLocalJobQueue(DefaultJobQueueCap)
+	c := &Coordinator{}
+	m := &localMailBox{coorService: c}
+	c.MailBox = m
+	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap)
 	c.Serve()
 
-	return &c
+	return c
 }
 
 // create a Coordinator.
@@ -104,28 +116,27 @@ type CoorMailBox interface {
 }
 
 type localMailBox struct {
-  coorService *Coordinator
+	coorService *Coordinator
 }
 
-func (r *localMailBox) Serve() {
-	// init with for select
+func (l *localMailBox) Serve() {
 	return
 }
-func (r *localMailBox) GetJobs(workerID string) ([]Job,error) {
-  jobs , err := l.coorService.GetJobs() 
-  if err !=nil {
-    return fmt.Errorf("failed on l.coorService.GetJobs: %v", err)
-  }
+func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
+	jobs, err := l.coorService.GetJobs(workerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed on l.coorService.GetJobs: %v", err)
+	}
 	return jobs, nil
 }
 
-func (r *localMailBox) Done() bool {
+func (l *localMailBox) Done() bool {
 	// hang here forever
 	// TODO: Handle this done check
 	return true
 }
 
-func (r *localMailBox) Example(args *ExampleArgs, reply *ExampleReply) error {
+func (l *localMailBox) Example(args *ExampleArgs, reply *ExampleReply) error {
 	reply.Y = args.X + 1
 	return nil
 }
@@ -146,8 +157,8 @@ func (r *rpcMailBox) Serve() {
 	go http.Serve(l, nil)
 }
 
-func (r *rpcMailBox) GetJobs() []Job {
-	return []Job{}
+func (r *rpcMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
+	return []Job{}, nil
 }
 
 func (r *rpcMailBox) Done() bool {

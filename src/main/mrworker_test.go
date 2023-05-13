@@ -32,6 +32,7 @@ var _ = Describe("LocalWorker", func() {
 	AfterEach(func() {
 		localWorker.Shutdown()
 	})
+
 	When("worker ask coordinator for jobs", func() {
 		var (
 			req   mr.WordCountArgs
@@ -40,6 +41,7 @@ var _ = Describe("LocalWorker", func() {
 		)
 		BeforeEach(func() {
 			err = coor.WordCount(&req, &reply)
+			coor.Wait()
 		})
 		It("should return correct jobs", func() {
 			Expect(err).ShouldNot(HaveOccurred())
