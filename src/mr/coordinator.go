@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"time"
 )
 
 type Coordinator struct {
@@ -25,8 +26,14 @@ func NewLocalJobQueue(capacity int) *JobQueue {
 }
 
 func (j *JobQueue) Submit(job Job) error {
+	fmt.Println("try to submit jobs", job)
 	j.ch <- job
+	fmt.Println("job Submited", job)
 	return nil
+}
+
+func (j *JobQueue) NumOfJobs() int {
+	return len(j.ch)
 }
 
 func (j *JobQueue) GetJob() (Job, error) {
@@ -44,7 +51,12 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	return nil
 }
 
+//func (c *Coordinator) MonitorJob(args *WordCountArgs, reply *WordCountReply) error {
+
 func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) error {
+	//	go c.monitorJobs()
+	//
+	log.Printf("in c.WordCount, args: %v\n", args)
 	for _, fileName := range args.FileNames {
 		// assign job for every file
 		job := NewJob(fileName, TYPE_MAP)
@@ -52,7 +64,9 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 			return err
 		}
 	}
+	log.Println("num of jobs in queue", c.JobQueue.NumOfJobs())
 	reply.Y = args.X + 1
+	time.Sleep(1 * time.Second)
 	return nil
 }
 
@@ -60,6 +74,7 @@ func (c *Coordinator) Wait() {
 	// wait until job finished
 	// there's monitor goroutine who monitor the job progress,
 	// when job is done, close doneChan
+	//
 	<-c.doneChan
 }
 
@@ -90,8 +105,8 @@ func NewLocalCoordinator() *Coordinator {
 	m := &localMailBox{coorService: c}
 	c.MailBox = m
 	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap)
+	c.doneChan = make(chan struct{})
 	c.Serve()
-
 	return c
 }
 
@@ -101,9 +116,7 @@ func NewLocalCoordinator() *Coordinator {
 func NewRPCCoordinator(files []string, nReduce int) *Coordinator {
 	m := &rpcMailBox{}
 	c := Coordinator{MailBox: m}
-
-	// Your code here.
-
+	c.doneChan = make(chan struct{})
 	c.Serve()
 	return &c
 }
@@ -122,6 +135,7 @@ type localMailBox struct {
 func (l *localMailBox) Serve() {
 	return
 }
+
 func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 	jobs, err := l.coorService.GetJobs(workerID)
 	if err != nil {

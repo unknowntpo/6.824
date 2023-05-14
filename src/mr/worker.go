@@ -91,7 +91,7 @@ func (l *localWorker) IsHealthy() bool { return true }
 func (l *localWorker) Serve(ctx context.Context) error {
 	for {
 		jobs, err := l.coMailBox.GetJobs(l.ID)
-		log.Println("WORKER[%v]: got jobs", l.ID, jobs)
+		log.Printf("WORKER[%v]: got jobs: %v\n", l.ID, jobs)
 		if err != nil {
 			log.Println(err)
 		}

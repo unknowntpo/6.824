@@ -35,12 +35,15 @@ var _ = Describe("LocalWorker", func() {
 
 	When("worker ask coordinator for jobs", func() {
 		var (
-			req   mr.WordCountArgs
-			reply mr.WordCountReply
+			req   *mr.WordCountArgs
+			reply *mr.WordCountReply
 			err   error
 		)
 		BeforeEach(func() {
-			err = coor.WordCount(&req, &reply)
+			req = &mr.WordCountArgs{FileNames: []string{"pg-being_ernest.txt", "pg-grimm.txt"}}
+			reply = &mr.WordCountReply{}
+			err = coor.WordCount(req, reply)
+			Expect(err).ShouldNot(HaveOccurred())
 			coor.Wait()
 		})
 		It("should return correct jobs", func() {
