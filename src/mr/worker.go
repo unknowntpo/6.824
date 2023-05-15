@@ -6,6 +6,7 @@ import (
 	"hash/fnv"
 	"log"
 	"net/rpc"
+	"time"
 
 	uuid "github.com/google/uuid"
 )
@@ -89,25 +90,28 @@ type localWorker struct {
 
 func (l *localWorker) IsHealthy() bool { return true }
 func (l *localWorker) Serve(ctx context.Context) error {
+	timer := time.NewTicker(300 * time.Millisecond)
 	for {
-		jobs, err := l.coMailBox.GetJobs(l.ID)
-		log.Printf("WORKER[%v]: got jobs: %v\n", l.ID, jobs)
-		if err != nil {
-			log.Println(err)
-		}
-		if err := l.handleJobs(ctx, jobs); err != nil {
-			log.Println(err)
-		}
 		select {
+		case <-timer.C:
+			jobs, err := l.coMailBox.GetJobs(l.ID)
+			if err != nil {
+				log.Println(err)
+			}
+			go l.handleJobs(ctx, jobs)
 		case <-ctx.Done():
 			return nil
-		default:
 		}
 	}
 }
 
-func (l *localWorker) handleJobs(ctx context.Context, jobs []Job) error { return nil }
-func (l *localWorker) Shutdown()                                        { return }
+func (l *localWorker) handleJobs(ctx context.Context, jobs []Job) error {
+	for _, j := range jobs {
+		l.logWorker("job [%v] is handled\n", j)
+	}
+	return nil
+}
+func (l *localWorker) Shutdown() { return }
 
 type rpcWorker struct{}
 
@@ -157,4 +161,8 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 
 	fmt.Println(err)
 	return false
+}
+
+func (l *localWorker) logWorker(format string, args ...interface{}) {
+	log.Printf(fmt.Sprintf("WORKER[%v]\t", l.ID)+format, args...)
 }

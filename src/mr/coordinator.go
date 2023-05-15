@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
-	"time"
 )
 
 type Coordinator struct {
@@ -17,18 +16,23 @@ type Coordinator struct {
 	doneChan chan struct{}
 }
 
-type JobQueue struct {
-	ch chan Job
+func (c *Coordinator) logCoordinator(format string, args ...interface{}) {
+	log.Printf("Coordinator[]\t"+format, args...)
 }
 
-func NewLocalJobQueue(capacity int) *JobQueue {
-	return &JobQueue{ch: make(chan Job, capacity)}
+type JobQueue struct {
+	coor *Coordinator
+	ch   chan Job
+}
+
+func NewLocalJobQueue(capacity int, coor *Coordinator) *JobQueue {
+	return &JobQueue{ch: make(chan Job, capacity), coor: coor}
 }
 
 func (j *JobQueue) Submit(job Job) error {
-	fmt.Println("try to submit jobs", job)
+	j.coor.logCoordinator("try to submit jobs: %v", job)
 	j.ch <- job
-	fmt.Println("job Submited", job)
+	j.coor.logCoordinator("job Submited: %v", job)
 	return nil
 }
 
@@ -63,10 +67,11 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 		if err := c.JobQueue.Submit(job); err != nil {
 			return err
 		}
+		c.logCoordinator("length of jobs: %v", c.JobQueue.NumOfJobs())
 	}
-	log.Println("num of jobs in queue", c.JobQueue.NumOfJobs())
 	reply.Y = args.X + 1
-	time.Sleep(1 * time.Second)
+	c.logCoordinator("length of jobs: %v", c.JobQueue.NumOfJobs())
+	c.Wait()
 	return nil
 }
 
@@ -104,7 +109,7 @@ func NewLocalCoordinator() *Coordinator {
 	c := &Coordinator{}
 	m := &localMailBox{coorService: c}
 	c.MailBox = m
-	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap)
+	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap, c)
 	c.doneChan = make(chan struct{})
 	c.Serve()
 	return c
