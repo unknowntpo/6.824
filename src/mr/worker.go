@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"hash/fnv"
+	"io/ioutil"
 	"log"
 	"net/rpc"
 	"time"
@@ -17,6 +18,10 @@ type KeyValue struct {
 	Value string
 }
 
+type KeyValues struct {
+	KVS []KeyValue
+}
+
 // use ihash(key) % NReduce to choose the reduce
 // task number for each KeyValue emitted by Map.
 func ihash(key string) int {
@@ -25,8 +30,13 @@ func ihash(key string) int {
 	return int(h.Sum32() & 0x7fffffff)
 }
 
-type MapFn func(string, string) []KeyValue
-type ReduceFn func(string, []string) string
+// See paper for the def of map, reduce func
+// https://static.googleusercontent.com/media/research.google.com/en//archive/mapreduce-osdi04.pdf
+// key: doc name, value: document contents
+type MapFn func(key string, value string) []KeyValue
+
+// key: a word, values: a list of counts
+type ReduceFn func(key string, values []string) string
 
 // main/mrworker.go calls this function.
 func Work(
@@ -108,9 +118,22 @@ func (l *localWorker) Serve(ctx context.Context) error {
 func (l *localWorker) handleJobs(ctx context.Context, jobs []Job) error {
 	for _, j := range jobs {
 		l.logWorker("job [%v] is handled\n", j)
+		b, err := ioutil.ReadFile(j.FileName)
+		if err != nil {
+			// FIXME: multiple errors ?
+			return fmt.Errorf("failed on ioutil.ReadFile: %v", err)
+		}
+		switch j.JobType {
+		case TYPE_MAP:
+			kvs := l.mapFn(j.FileName, string(b))
+			// intermediate file
+			_ = kvs
+		case TYPE_REDUCE:
+		}
 	}
 	return nil
 }
+
 func (l *localWorker) Shutdown() { return }
 
 type rpcWorker struct{}
