@@ -2,11 +2,13 @@ package mr
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
 	"log"
 	"net/rpc"
+	"os"
 	"time"
 
 	uuid "github.com/google/uuid"
@@ -101,6 +103,7 @@ type localWorker struct {
 func (l *localWorker) IsHealthy() bool { return true }
 func (l *localWorker) Serve(ctx context.Context) error {
 	timer := time.NewTicker(300 * time.Millisecond)
+	errChan := make(chan error, 30)
 	for {
 		select {
 		case <-timer.C:
@@ -108,27 +111,50 @@ func (l *localWorker) Serve(ctx context.Context) error {
 			if err != nil {
 				log.Println(err)
 			}
-			go l.handleJobs(ctx, jobs)
+			go l.handleJobs(ctx, jobs, errChan)
+		case err := <-errChan:
+			l.logWorker("%v", err)
 		case <-ctx.Done():
 			return nil
 		}
 	}
 }
 
-func (l *localWorker) handleJobs(ctx context.Context, jobs []Job) error {
+func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan error) {
 	for _, j := range jobs {
 		l.logWorker("job [%v] is handled\n", j)
 		b, err := ioutil.ReadFile(j.FileName)
 		if err != nil {
 			// FIXME: multiple errors ?
-			return fmt.Errorf("failed on ioutil.ReadFile: %v", err)
+			errChan <- fmt.Errorf("failed on ioutil.ReadFile: %v", err)
 		}
 		switch j.JobType {
 		case TYPE_MAP:
 			kvs := l.mapFn(j.FileName, string(b))
 			// intermediate file
-			_ = kvs
+			fileName := getIntermediateFileName()
+			if err := writeKeyValuesToFile(fileName, kvs); err != nil {
+				errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
+			}
 		case TYPE_REDUCE:
+		}
+	}
+}
+
+func getIntermediateFileName() string {
+	return "mr-inter-" + uuid.Must(uuid.NewRandom()).String()
+}
+
+func writeKeyValuesToFile(fileName string, kvs []KeyValue) error {
+	f, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	enc := json.NewEncoder(f)
+	for _, kv := range kvs {
+		err := enc.Encode(&kv)
+		if err != nil {
+			return err
 		}
 	}
 	return nil
