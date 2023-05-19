@@ -56,7 +56,14 @@ func Work(
 
 }
 
+type JobID string
+
+func NewJobID() JobID {
+	return JobID(uuid.Must(uuid.NewRandom()).String())
+}
+
 type Job struct {
+	ID       JobID
 	FileName string
 	JobType  JobType
 }
@@ -69,7 +76,7 @@ const (
 )
 
 func NewJob(fileName string, jobType JobType) Job {
-	return Job{FileName: fileName, JobType: jobType}
+	return Job{ID: NewJobID(), FileName: fileName, JobType: jobType}
 }
 
 type Worker interface {
@@ -137,6 +144,13 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 				errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
 			}
 		case TYPE_REDUCE:
+			// open old intermediate file
+			fileName := getIntermediateFileName()
+      kvs,  err := readKeyValuesFromFile(fileName); err != nil {
+				errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
+			}
+// type ReduceFn func(key string, values []string) string
+      _ = l.reduceFn()
 		}
 	}
 }
@@ -150,14 +164,31 @@ func writeKeyValuesToFile(fileName string, kvs []KeyValue) error {
 	if err != nil {
 		return err
 	}
-	enc := json.NewEncoder(f)
+	enc := json.NewDecoder(f)
 	for _, kv := range kvs {
-		err := enc.Encode(&kv)
+		err := enc.Decode(&kv)
 		if err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func readKeyValuesFromFile(fileName string) ([]Keyvalue, error) {
+	f, err := os.OpenFile(fileName, os.O_RDWR, 0644)
+	if err != nil {
+		return err
+	}
+	dec := json.NewDecoder(f)
+  out := make([]KeyValue, 0, 1000)
+	for {
+    var kv KeyValue
+		if err := dec.Decode(&kv); err !=nil{
+      break
+		}
+    kvs = append(kvs, kv)
+	}
+	return kvs
 }
 
 func (l *localWorker) Shutdown() { return }

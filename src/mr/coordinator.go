@@ -11,9 +11,10 @@ import (
 
 type Coordinator struct {
 	// Your definitions here.
-	JobQueue *JobQueue
-	MailBox  CoorMailBox
-	doneChan chan struct{}
+	JobQueue       *JobQueue
+	MailBox        CoorMailBox
+	mapDoneChan    chan struct{}
+	reduceDoneChan chan struct{}
 }
 
 func (c *Coordinator) logCoordinator(format string, args ...interface{}) {
@@ -61,6 +62,7 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 	//	go c.monitorJobs()
 	//
 	log.Printf("in c.WordCount, args: %v\n", args)
+	mapJobs := make([]Job, 0, len(args.FileNames))
 	for _, fileName := range args.FileNames {
 		// assign job for every file
 		job := NewJob(fileName, TYPE_MAP)
@@ -68,19 +70,34 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 			return err
 		}
 		c.logCoordinator("length of jobs: %v", c.JobQueue.NumOfJobs())
+		mapJobs = append(mapJobs, job)
 	}
-	reply.Y = args.X + 1
+
+	// get intermediate file names
 	c.logCoordinator("length of jobs: %v", c.JobQueue.NumOfJobs())
-	c.Wait()
+	c.WaitForMap()
+
+	// reuse same jobs
+
+	for _, j := range mapJobs {
+		j.JobType = TYPE_REDUCE
+		// reuse same job
+		if err := c.JobQueue.Submit(j); err != nil {
+			return err
+		}
+	}
+	c.WaitForReduce()
+	c.logCoordinator("all jobs are done")
 	return nil
 }
 
-func (c *Coordinator) Wait() {
-	// wait until job finished
-	// there's monitor goroutine who monitor the job progress,
-	// when job is done, close doneChan
-	//
-	<-c.doneChan
+func (c *Coordinator) WaitForReduce() {
+	<-c.reduceDoneChan
+}
+
+func (c *Coordinator) WaitForMap() {
+	// wait until map job finished
+	<-c.mapDoneChan
 }
 
 // start a thread that listens for RPCs from worker.go
@@ -110,7 +127,7 @@ func NewLocalCoordinator() *Coordinator {
 	m := &localMailBox{coorService: c}
 	c.MailBox = m
 	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap, c)
-	c.doneChan = make(chan struct{})
+	c.mapDoneChan = make(chan struct{})
 	c.Serve()
 	return c
 }
@@ -121,7 +138,7 @@ func NewLocalCoordinator() *Coordinator {
 func NewRPCCoordinator(files []string, nReduce int) *Coordinator {
 	m := &rpcMailBox{}
 	c := Coordinator{MailBox: m}
-	c.doneChan = make(chan struct{})
+	c.mapDoneChan = make(chan struct{})
 	c.Serve()
 	return &c
 }
