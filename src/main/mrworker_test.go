@@ -43,7 +43,7 @@ var _ = Describe("LocalWorker", func() {
 			reply = &mr.WordCountReply{}
 			err = coor.WordCount(req, reply)
 			Expect(err).ShouldNot(HaveOccurred())
-			coor.Wait()
+			coor.WaitForMap()
 		})
 		It("should return correct jobs", func() {
 			Expect(err).ShouldNot(HaveOccurred())

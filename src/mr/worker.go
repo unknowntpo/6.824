@@ -139,7 +139,7 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 		case TYPE_MAP:
 			kvs := l.mapFn(j.FileName, string(b))
 			// intermediate file
-      // // should use ihash() to dispatch to different file
+			// // should use ihash() to dispatch to different file
 			fileName := getIntermediateFileName()
 			if err := writeKeyValuesToFile(fileName, kvs); err != nil {
 				errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
@@ -147,11 +147,12 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 		case TYPE_REDUCE:
 			// open old intermediate file
 			fileName := getIntermediateFileName()
-      kvs,  err := readKeyValuesFromFile(fileName); err != nil {
+			kvs, err := readKeyValuesFromFile(fileName)
+			if err != nil {
 				errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
 			}
-// type ReduceFn func(key string, values []string) string
-      _ = l.reduceFn()
+			_ = kvs
+			// type ReduceFn func(key string, values []string) string
 		}
 	}
 }
@@ -175,21 +176,21 @@ func writeKeyValuesToFile(fileName string, kvs []KeyValue) error {
 	return nil
 }
 
-func readKeyValuesFromFile(fileName string) ([]Keyvalue, error) {
+func readKeyValuesFromFile(fileName string) ([]KeyValue, error) {
 	f, err := os.OpenFile(fileName, os.O_RDWR, 0644)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	dec := json.NewDecoder(f)
-  out := make([]KeyValue, 0, 1000)
+	out := make([]KeyValue, 0, 1000)
 	for {
-    var kv KeyValue
-		if err := dec.Decode(&kv); err !=nil{
-      break
+		var kv KeyValue
+		if err := dec.Decode(&kv); err != nil {
+			break
 		}
-    kvs = append(kvs, kv)
+		out = append(out, kv)
 	}
-	return kvs
+	return out, nil
 }
 
 func (l *localWorker) Shutdown() { return }

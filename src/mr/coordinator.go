@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"net"
@@ -13,8 +14,30 @@ type Coordinator struct {
 	// Your definitions here.
 	JobQueue       *JobQueue
 	MailBox        CoorMailBox
+	workerMap      WorkerMap
 	mapDoneChan    chan struct{}
 	reduceDoneChan chan struct{}
+}
+
+// WorkerMap stores every workers' jobs
+type WorkerMap map[WorkerID][]Job
+
+func NewWorkerMap() WorkerMap {
+	return WorkerMap{}
+}
+
+func debug(i interface{}) string {
+	b, err := json.MarshalIndent(i, "", "\t")
+	if err != nil {
+		panic(err)
+	}
+	return string(b)
+}
+
+// AddJob add job to specific worker.
+func (m WorkerMap) AddJob(j Job, workerID WorkerID) error {
+	m[workerID] = append(m[workerID], j)
+	return nil
 }
 
 func (c *Coordinator) logCoordinator(format string, args ...interface{}) {
@@ -117,6 +140,10 @@ func (c *Coordinator) GetJobs(id WorkerID) ([]Job, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed on c.JobQueue.GetJob: %v", err)
 	}
+	if err := c.workerMap.AddJob(j, id); err != nil {
+		return nil, fmt.Errorf("failed on c.workerMap.AddJob: %v", err)
+	}
+	c.logCoordinator("c.workerMap: %v", debug(c.workerMap))
 	return []Job{j}, nil
 }
 
@@ -126,6 +153,7 @@ func NewLocalCoordinator() *Coordinator {
 	c := &Coordinator{}
 	m := &localMailBox{coorService: c}
 	c.MailBox = m
+	c.workerMap = NewWorkerMap()
 	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap, c)
 	c.mapDoneChan = make(chan struct{})
 	c.Serve()
