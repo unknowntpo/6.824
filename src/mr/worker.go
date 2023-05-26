@@ -139,10 +139,14 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 		case TYPE_MAP:
 			kvs := l.mapFn(j.FileName, string(b))
 			// intermediate file
-			// // should use ihash() to dispatch to different file
-			fileName := getIntermediateFileName()
-			if err := writeKeyValuesToFile(fileName, kvs); err != nil {
-				errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
+			kvsMap := kvs.GroupByKeyIHash()
+
+			for keyIHash, kvs := range kvsMap {
+				// format: map-<ihash(j.filename)>-<keyIHash>
+				fileName := getIntermediateFileName(ihash(j.FileName), keyIHash)
+				if err := writeKeyValuesToFile(fileName, kvs); err != nil {
+					errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
+				}
 			}
 		case TYPE_REDUCE:
 			// open old intermediate file
