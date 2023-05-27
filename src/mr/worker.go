@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
+	"io"
 	"io/ioutil"
 	"log"
 	"net/rpc"
@@ -28,9 +29,10 @@ type keyIHash int
 type KeyValuesMap map[keyIHash][]KeyValue
 
 func GroupByKeyIHash(kvs []KeyValue) KeyValuesMap {
+	nReduce := 10
 	out := KeyValuesMap{}
 	for _, kv := range kvs {
-		hashKey := ihash(kv.Key)
+		hashKey := ihash(kv.Key) % keyIHash(nReduce)
 		out[hashKey] = append(out[hashKey], kv)
 	}
 	return out
@@ -152,19 +154,16 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 			kvs := l.mapFn(j.FileName, string(b))
 			// intermediate file
 			kvsMap := GroupByKeyIHash(kvs)
-			l.logWorker(debug(kvsMap))
+			// l.logWorker(debug(kvsMap))
 			// TODO: Reduce them to nReduce
-			/*
-				for keyIHash, kvs := range kvsMap {
-					// format: map-<ihash(j.filename)>-<keyIHash>
 
-
-						fileName := getIntermediateFileName(j.FileName, keyIHash)
-						if err := writeKeyValuesToFile(fileName, kvs); err != nil {
-							errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
-						}
+			for keyIHash, kvs := range kvsMap {
+				// format: map-<ihash(j.filename)>-<keyIHash>
+				fileName := getIntermediateFileName(j.FileName, keyIHash)
+				if err := writeKeyValuesToFile(fileName, kvs); err != nil {
+					errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
 				}
-			*/
+			}
 
 		case TYPE_REDUCE:
 			// open old intermediate file
@@ -190,11 +189,15 @@ func writeKeyValuesToFile(fileName string, kvs []KeyValue) error {
 	if err != nil {
 		return err
 	}
-	enc := json.NewDecoder(f)
+	enc := json.NewEncoder(f)
 	for _, kv := range kvs {
-		err := enc.Decode(&kv)
-		if err != nil {
-			return err
+		if err := enc.Encode(&kv); err != nil {
+			switch err {
+			case io.EOF:
+				break
+			default:
+				return err
+			}
 		}
 	}
 	return nil
@@ -210,11 +213,15 @@ func readKeyValuesFromFile(fileName string) ([]KeyValue, error) {
 	for {
 		var kv KeyValue
 		if err := dec.Decode(&kv); err != nil {
-			break
+			switch err {
+			case io.EOF:
+				break
+			default:
+				return nil, err
+			}
 		}
 		out = append(out, kv)
 	}
-	return out, nil
 }
 
 func (l *localWorker) Shutdown() { return }
