@@ -24,12 +24,24 @@ type KeyValues struct {
 	KVS []KeyValue
 }
 
+type keyIHash int
+type KeyValuesMap map[keyIHash][]KeyValue
+
+func GroupByKeyIHash(kvs []KeyValue) KeyValuesMap {
+	out := KeyValuesMap{}
+	for _, kv := range kvs {
+		hashKey := ihash(kv.Key)
+		out[hashKey] = append(out[hashKey], kv)
+	}
+	return out
+}
+
 // use ihash(key) % NReduce to choose the reduce
 // task number for each KeyValue emitted by Map.
-func ihash(key string) int {
+func ihash(key string) keyIHash {
 	h := fnv.New32a()
 	h.Write([]byte(key))
-	return int(h.Sum32() & 0x7fffffff)
+	return keyIHash(h.Sum32() & 0x7fffffff)
 }
 
 // See paper for the def of map, reduce func
@@ -139,30 +151,38 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 		case TYPE_MAP:
 			kvs := l.mapFn(j.FileName, string(b))
 			// intermediate file
-			kvsMap := kvs.GroupByKeyIHash()
+			kvsMap := GroupByKeyIHash(kvs)
+			l.logWorker(debug(kvsMap))
+			// TODO: Reduce them to nReduce
+			/*
+				for keyIHash, kvs := range kvsMap {
+					// format: map-<ihash(j.filename)>-<keyIHash>
 
-			for keyIHash, kvs := range kvsMap {
-				// format: map-<ihash(j.filename)>-<keyIHash>
-				fileName := getIntermediateFileName(ihash(j.FileName), keyIHash)
-				if err := writeKeyValuesToFile(fileName, kvs); err != nil {
-					errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
+
+						fileName := getIntermediateFileName(j.FileName, keyIHash)
+						if err := writeKeyValuesToFile(fileName, kvs); err != nil {
+							errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
+						}
 				}
-			}
+			*/
+
 		case TYPE_REDUCE:
 			// open old intermediate file
-			fileName := getIntermediateFileName()
-			kvs, err := readKeyValuesFromFile(fileName)
-			if err != nil {
-				errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
-			}
-			_ = kvs
-			// type ReduceFn func(key string, values []string) string
+			/*
+				fileName := getIntermediateFileName()
+				kvs, err := readKeyValuesFromFile(fileName)
+				if err != nil {
+					errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
+				}
+				_ = kvs
+				// type ReduceFn func(key string, values []string) string
+			*/
 		}
 	}
 }
 
-func getIntermediateFileName() string {
-	return "mr-inter-" + uuid.Must(uuid.NewRandom()).String()
+func getIntermediateFileName(fileName string, keyIHash keyIHash) string {
+	return fmt.Sprintf("mr-%v-%v", ihash(fileName), keyIHash)
 }
 
 func writeKeyValuesToFile(fileName string, kvs []KeyValue) error {
