@@ -28,11 +28,13 @@ type KeyValues struct {
 type keyIHash int
 type KeyValuesMap map[keyIHash][]KeyValue
 
-func GroupByKeyIHash(kvs []KeyValue) KeyValuesMap {
-	nReduce := 10
+type groupByFn func(key string) keyIHash
+
+// groupBy groups kvs by fn
+func groupBy(kvs []KeyValue, fn groupByFn) KeyValuesMap {
 	out := KeyValuesMap{}
 	for _, kv := range kvs {
-		hashKey := ihash(kv.Key) % keyIHash(nReduce)
+		hashKey := fn(kv.Key)
 		out[hashKey] = append(out[hashKey], kv)
 	}
 	return out
@@ -105,9 +107,10 @@ func NewWorkerID() WorkerID {
 	return WorkerID(uuid.Must(uuid.NewRandom()).String())
 }
 
-func NewLocalWorker(m CoorMailBox, mapFn MapFn, reduceFn ReduceFn) Worker {
+func NewLocalWorker(m CoorMailBox, mapFn MapFn, reduceFn ReduceFn, nReduce int) Worker {
 	return &localWorker{
 		ID:        NewWorkerID(),
+		nReduce:   nReduce,
 		coMailBox: m,
 		mapFn:     mapFn,
 		reduceFn:  reduceFn,
@@ -116,6 +119,7 @@ func NewLocalWorker(m CoorMailBox, mapFn MapFn, reduceFn ReduceFn) Worker {
 
 type localWorker struct {
 	ID        WorkerID
+	nReduce   int
 	coMailBox CoorMailBox
 	mapFn     MapFn
 	reduceFn  ReduceFn
@@ -153,9 +157,9 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 		case TYPE_MAP:
 			kvs := l.mapFn(j.FileName, string(b))
 			// intermediate file
-			kvsMap := GroupByKeyIHash(kvs)
-			// l.logWorker(debug(kvsMap))
-			// TODO: Reduce them to nReduce
+			kvsMap := groupBy(kvs, func(key string) keyIHash {
+				return ihash(key) % keyIHash(l.nReduce)
+			})
 
 			for keyIHash, kvs := range kvsMap {
 				// format: map-<ihash(j.filename)>-<keyIHash>

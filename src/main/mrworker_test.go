@@ -22,9 +22,12 @@ var _ = Describe("LocalWorker", func() {
 		localWorker mr.Worker
 		coor        *mr.Coordinator
 	)
+	const (
+		nReduce = 10
+	)
 	BeforeEach(func() {
 		coor = mr.NewLocalCoordinator()
-		localWorker = mr.NewLocalWorker(coor.MailBox, Map, Reduce)
+		localWorker = mr.NewLocalWorker(coor.MailBox, Map, Reduce, nReduce)
 		go localWorker.Serve(context.Background())
 	})
 

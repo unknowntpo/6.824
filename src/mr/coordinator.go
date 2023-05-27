@@ -149,6 +149,7 @@ func (c *Coordinator) GetJobs(id WorkerID) ([]Job, error) {
 
 const DefaultJobQueueCap = 10
 
+// FIXME: Coordinator should know nReduce in advance ?
 func NewLocalCoordinator() *Coordinator {
 	c := &Coordinator{}
 	m := &localMailBox{coorService: c}
