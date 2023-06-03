@@ -15,6 +15,7 @@ type Coordinator struct {
 	JobQueue       *JobQueue
 	MailBox        CoorMailBox
 	workerMap      WorkerMap
+	nReduce        int
 	mapDoneChan    chan struct{}
 	reduceDoneChan chan struct{}
 }
@@ -96,14 +97,14 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 		mapJobs = append(mapJobs, job)
 	}
 
-	// get intermediate file names
-	c.logCoordinator("length of jobs: %v", c.JobQueue.NumOfJobs())
 	c.WaitForMap()
 
-	// reuse same jobs
-
-	for _, j := range mapJobs {
-		j.JobType = TYPE_REDUCE
+	for reduceNum := 0; reduceNum < c.nReduce; reduceNum++ {
+		j := Job{
+			ID:        NewJobID(),
+			JobType:   TYPE_REDUCE,
+			ReduceNum: reduceNum,
+		}
 		// reuse same job
 		if err := c.JobQueue.Submit(j); err != nil {
 			return err
@@ -150,8 +151,8 @@ func (c *Coordinator) GetJobs(id WorkerID) ([]Job, error) {
 const DefaultJobQueueCap = 10
 
 // FIXME: Coordinator should know nReduce in advance ?
-func NewLocalCoordinator() *Coordinator {
-	c := &Coordinator{}
+func NewLocalCoordinator(files []string, nReduce int) *Coordinator {
+	c := &Coordinator{nReduce: nReduce}
 	m := &localMailBox{coorService: c}
 	c.MailBox = m
 	c.workerMap = NewWorkerMap()

@@ -82,6 +82,11 @@ type Job struct {
 	ID       JobID
 	FileName string
 	JobType  JobType
+	// the reduce index
+	// e.g. if worker get a job with JobType == TYPE_MAP,
+	// and ReduceNum == 0, it has to grab all files with mr-<ihash>-0, and reduce them
+	// to final result file `mr-out-0`
+	ReduceNum int
 }
 
 type JobType int
@@ -164,14 +169,14 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 			for keyIHash, kvs := range kvsMap {
 				// format: map-<ihash(j.filename)>-<keyIHash>
 				fileName := getIntermediateFileName(j.FileName, keyIHash)
+				l.logWorker("writing file: %s", fileName)
 				if err := writeKeyValuesToFile(fileName, kvs); err != nil {
 					errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
 				}
 			}
-
 		case TYPE_REDUCE:
-			// open old intermediate file
 			/*
+				// open old intermediate file
 				fileName := getIntermediateFileName()
 				kvs, err := readKeyValuesFromFile(fileName)
 				if err != nil {
