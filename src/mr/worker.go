@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"time"
 
@@ -26,6 +27,20 @@ type KeyValue struct {
 
 type KeyValues struct {
 	KVS []KeyValue
+}
+
+type ByKey []KeyValue
+
+func (k ByKey) Len() int {
+	return len(k)
+}
+
+func (k ByKey) Less(i, j int) bool {
+	return k[i].Key < k[j].Key
+}
+
+func (k ByKey) Swap(i, j int) {
+	k[i], k[j] = k[j], k[i]
 }
 
 type keyIHash int
@@ -193,6 +208,7 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 
 			for keyIHash, kvs := range kvsMap {
 				// format: map-<ihash(j.filename)>-<keyIHash>
+				sort.Sort(ByKey(kvs))
 				fileName := getIntermediateFileName(j.FileName, keyIHash)
 				l.logWorker("writing file: %s", fileName)
 				if err := writeKeyValuesToFile(fileName, kvs); err != nil {
