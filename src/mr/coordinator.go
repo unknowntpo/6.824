@@ -19,7 +19,16 @@ type Coordinator struct {
 	// The number of unfinished jobs in Coordinator
 	mapJobDoneChan    chan struct{}
 	reduceJobDoneChan chan struct{}
+
+	Phase Phase
 }
+
+type Phase int
+
+const (
+	PHASE_MAP Phase = iota
+	PHASE_REDUCE
+)
 
 // WorkerMap stores every workers' jobs
 type WorkerMap map[WorkerID]map[JobID]struct{}
@@ -81,9 +90,7 @@ func NewLocalJobQueue(capacity int, coor *Coordinator) *JobQueue {
 }
 
 func (j *JobQueue) Submit(job Job) error {
-	j.coor.logCoordinator("try to submit jobs: %v", job)
 	j.ch <- job
-	j.coor.logCoordinator("job Submited: %v", job)
 	return nil
 }
 
@@ -110,9 +117,18 @@ func (c *Coordinator) FinishJob(workerID WorkerID, jobID JobID) error {
 	if err := c.workerMap.FinishJob(workerID, jobID); err != nil {
 		return fmt.Errorf("failed on Coordinator.FinishJob")
 	}
-	if _, ok := <-c.mapJobDoneChan; !ok {
-		// All map jobs are complete
-		close(c.mapJobDoneChan)
+	// job type
+	switch c.Phase {
+	case PHASE_MAP:
+		if _, ok := <-c.mapJobDoneChan; !ok {
+			// All map jobs are complete
+			close(c.mapJobDoneChan)
+		}
+	case PHASE_REDUCE:
+		if _, ok := <-c.reduceJobDoneChan; !ok {
+			// All map jobs are complete
+			close(c.mapJobDoneChan)
+		}
 	}
 	return nil
 }
@@ -120,6 +136,7 @@ func (c *Coordinator) FinishJob(workerID WorkerID, jobID JobID) error {
 func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) error {
 	//	go c.monitorJobs()
 	//
+	c.Phase = PHASE_MAP
 	log.Printf("in c.WordCount, args: %v\n", args)
 	mapJobs := make([]Job, 0, len(args.FileNames))
 	for _, fileName := range args.FileNames {
@@ -144,6 +161,8 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 
 	c.logCoordinator("all map jobs are done")
 
+	c.Phase = PHASE_REDUCE
+
 	for reduceNum := 0; reduceNum < c.nReduce; reduceNum++ {
 		j := Job{
 			ID:        NewJobID(),
@@ -154,6 +173,12 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 		if err := c.JobQueue.Submit(j); err != nil {
 			return err
 		}
+	}
+
+	// TODO: extract setup of c.mapJobDoneChan to a function
+	c.reduceJobDoneChan = make(chan struct{}, c.nReduce)
+	for i := 0; i < len(mapJobs); i++ {
+		c.reduceJobDoneChan <- struct{}{}
 	}
 	c.WaitForReduce()
 	c.logCoordinator("all jobs are done")

@@ -152,7 +152,6 @@ func (l *localWorker) Serve(ctx context.Context) error {
 
 func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan error) {
 	for _, j := range jobs {
-		l.logWorker("job [%v] is handled\n", j)
 		b, err := ioutil.ReadFile(j.FileName)
 		if err != nil {
 			// FIXME: multiple errors ?
@@ -174,7 +173,11 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 					errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
 				}
 			}
+			l.logWorker("job [%v] is handled\n", debug(j))
 		case TYPE_REDUCE:
+			l.logWorker("Reduce job [%v] is found\n", debug(j))
+			// Open mr-*-j.ReduceNum
+			// mr-1291122704-4
 			/*
 				// open old intermediate file
 				fileName := getIntermediateFileName()
