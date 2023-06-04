@@ -152,6 +152,7 @@ func (l *localWorker) Serve(ctx context.Context) error {
 			if err != nil {
 				log.Println(err)
 			}
+			l.logWorker("got jobs: %v", debug(jobs))
 			go l.handleJobs(ctx, jobs, errChan)
 		case err := <-errChan:
 			l.logWorker("%v", err)
@@ -199,6 +200,9 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 				_ = kvs
 				// type ReduceFn func(key string, values []string) string
 			*/
+		}
+		if err := l.coMailBox.FinishJob(l.ID, j.ID); err != nil {
+			errChan <- fmt.Errorf("failed on l.coMailBox.FinishJob: %v", err)
 		}
 	}
 }

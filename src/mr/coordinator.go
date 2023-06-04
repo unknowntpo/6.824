@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/rpc"
 	"os"
+	"sync"
 )
 
 type Coordinator struct {
@@ -16,9 +17,9 @@ type Coordinator struct {
 	MailBox   CoorMailBox
 	workerMap WorkerMap
 	nReduce   int
-	// The number of unfinished jobs in Coordinator
-	mapJobDoneChan    chan struct{}
-	reduceJobDoneChan chan struct{}
+
+	mapJobWaitGroup    sync.WaitGroup
+	reduceJobWaitGroup sync.WaitGroup
 
 	Phase Phase
 }
@@ -120,19 +121,20 @@ func (c *Coordinator) FinishJob(workerID WorkerID, jobID JobID) error {
 	// job type
 	switch c.Phase {
 	case PHASE_MAP:
-		c.mapJobDoneChan <- struct{}{}
+		c.mapJobWaitGroup.Done()
 	case PHASE_REDUCE:
-		c.reduceJobDoneChan <- struct{}{}
+		c.reduceJobWaitGroup.Done()
 	}
 	return nil
 }
 
 func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) error {
-	//	go c.monitorJobs()
-	//
 	c.Phase = PHASE_MAP
 	log.Printf("in c.WordCount, args: %v\n", args)
 	mapJobs := make([]Job, 0, len(args.FileNames))
+
+	c.mapJobWaitGroup.Add(len(args.FileNames))
+
 	for _, fileName := range args.FileNames {
 		// assign job for every file
 		job := NewJob(fileName, TYPE_MAP)
@@ -143,19 +145,13 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 		mapJobs = append(mapJobs, job)
 	}
 
-	// number of map jobs will be args.FileNames
-	c.mapJobDoneChan = make(chan struct{}, len(args.FileNames))
-
-	// Set jobDoneChan
-	for i := 0; i < len(mapJobs); i++ {
-		c.mapJobDoneChan <- struct{}{}
-	}
-
 	c.WaitForMap()
 
 	c.logCoordinator("all map jobs are done")
 
 	c.Phase = PHASE_REDUCE
+
+	c.reduceJobWaitGroup.Add(c.nReduce)
 
 	for reduceNum := 0; reduceNum < c.nReduce; reduceNum++ {
 		j := Job{
@@ -169,25 +165,19 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 		}
 	}
 
-	// TODO: extract setup of c.mapJobDoneChan to a function
-	c.reduceJobDoneChan = make(chan struct{}, c.nReduce)
-	for i := 0; i < len(mapJobs); i++ {
-		c.reduceJobDoneChan <- struct{}{}
-	}
 	c.WaitForReduce()
+
 	c.logCoordinator("all jobs are done")
+
 	return nil
 }
 
 func (c *Coordinator) WaitForReduce() {
-	// wait until map job finished
-	<-c.reduceJobDoneChan
+	c.reduceJobWaitGroup.Wait()
 }
 
 func (c *Coordinator) WaitForMap() {
-	// wait until map job finished
-	//
-	<-c.mapJobDoneChan
+	c.mapJobWaitGroup.Wait()
 }
 
 // start a thread that listens for RPCs from worker.go
@@ -223,7 +213,6 @@ func NewLocalCoordinator(files []string, nReduce int) *Coordinator {
 	c.MailBox = m
 	c.workerMap = NewWorkerMap()
 	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap, c)
-	c.mapJobDoneChan = make(chan struct{})
 	c.nReduce = nReduce
 	c.Serve()
 	return c
@@ -235,7 +224,6 @@ func NewLocalCoordinator(files []string, nReduce int) *Coordinator {
 func NewRPCCoordinator(files []string, nReduce int) *Coordinator {
 	m := &rpcMailBox{}
 	c := Coordinator{MailBox: m}
-	c.mapJobDoneChan = make(chan struct{})
 	c.Serve()
 	return &c
 }
