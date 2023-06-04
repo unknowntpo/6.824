@@ -12,16 +12,17 @@ import (
 
 type Coordinator struct {
 	// Your definitions here.
-	JobQueue       *JobQueue
-	MailBox        CoorMailBox
-	workerMap      WorkerMap
-	nReduce        int
-	mapDoneChan    chan struct{}
-	reduceDoneChan chan struct{}
+	JobQueue  *JobQueue
+	MailBox   CoorMailBox
+	workerMap WorkerMap
+	nReduce   int
+	// The number of unfinished jobs in Coordinator
+	mapJobDoneChan    chan struct{}
+	reduceJobDoneChan chan struct{}
 }
 
 // WorkerMap stores every workers' jobs
-type WorkerMap map[WorkerID][]Job
+type WorkerMap map[WorkerID]map[JobID]struct{}
 
 func NewWorkerMap() WorkerMap {
 	return WorkerMap{}
@@ -37,7 +38,32 @@ func debug(i interface{}) string {
 
 // AddJob add job to specific worker.
 func (m WorkerMap) AddJob(j Job, workerID WorkerID) error {
-	m[workerID] = append(m[workerID], j)
+	jobsForWorker, ok := m[workerID]
+	if !ok {
+		// it's new worker
+		jobsForWorker = map[JobID]struct{}{}
+	}
+	_, ok = jobsForWorker[j.ID]
+	if ok {
+		return fmt.Errorf("job %v already exists", j.ID)
+	}
+	// Job Not Found
+	jobsForWorker[j.ID] = struct{}{}
+	m[workerID] = jobsForWorker
+	return nil
+}
+
+func (m WorkerMap) FinishJob(workerID WorkerID, jobID JobID) error {
+	var jobs map[JobID]struct{}
+	var ok bool
+	if jobs, ok = m[workerID]; !ok {
+		return fmt.Errorf("worker not found")
+	}
+	if _, ok := jobs[jobID]; !ok {
+		return fmt.Errorf("job not found")
+	}
+	delete(jobs, jobID)
+	m[workerID] = jobs
 	return nil
 }
 
@@ -80,7 +106,16 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	return nil
 }
 
-//func (c *Coordinator) MonitorJob(args *WordCountArgs, reply *WordCountReply) error {
+func (c *Coordinator) FinishJob(workerID WorkerID, jobID JobID) error {
+	if err := c.workerMap.FinishJob(workerID, jobID); err != nil {
+		return fmt.Errorf("failed on Coordinator.FinishJob")
+	}
+	if _, ok := <-c.mapJobDoneChan; !ok {
+		// All map jobs are complete
+		close(c.mapJobDoneChan)
+	}
+	return nil
+}
 
 func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) error {
 	//	go c.monitorJobs()
@@ -97,7 +132,17 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 		mapJobs = append(mapJobs, job)
 	}
 
+	// number of map jobs will be args.FileNames
+	c.mapJobDoneChan = make(chan struct{}, len(args.FileNames))
+
+	// Set jobDoneChan
+	for i := 0; i < len(mapJobs); i++ {
+		c.mapJobDoneChan <- struct{}{}
+	}
+
 	c.WaitForMap()
+
+	c.logCoordinator("all map jobs are done")
 
 	for reduceNum := 0; reduceNum < c.nReduce; reduceNum++ {
 		j := Job{
@@ -116,12 +161,13 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 }
 
 func (c *Coordinator) WaitForReduce() {
-	<-c.reduceDoneChan
+	// wait until map job finished
+	<-c.reduceJobDoneChan
 }
 
 func (c *Coordinator) WaitForMap() {
 	// wait until map job finished
-	<-c.mapDoneChan
+	<-c.mapJobDoneChan
 }
 
 // start a thread that listens for RPCs from worker.go
@@ -157,7 +203,7 @@ func NewLocalCoordinator(files []string, nReduce int) *Coordinator {
 	c.MailBox = m
 	c.workerMap = NewWorkerMap()
 	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap, c)
-	c.mapDoneChan = make(chan struct{})
+	c.mapJobDoneChan = make(chan struct{})
 	c.Serve()
 	return c
 }
@@ -168,7 +214,7 @@ func NewLocalCoordinator(files []string, nReduce int) *Coordinator {
 func NewRPCCoordinator(files []string, nReduce int) *Coordinator {
 	m := &rpcMailBox{}
 	c := Coordinator{MailBox: m}
-	c.mapDoneChan = make(chan struct{})
+	c.mapJobDoneChan = make(chan struct{})
 	c.Serve()
 	return &c
 }
@@ -177,6 +223,7 @@ type CoorMailBox interface {
 	Serve()
 	GetJobs(id WorkerID) ([]Job, error)
 	Done() bool
+	FinishJob(workerID WorkerID, jobID JobID) error
 	Example(args *ExampleArgs, reply *ExampleReply) error
 }
 
@@ -194,6 +241,12 @@ func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 		return nil, fmt.Errorf("failed on l.coorService.GetJobs: %v", err)
 	}
 	return jobs, nil
+}
+
+func (l *localMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
+	// Find job in wokrerMap
+	l.coorService.FinishJob(workerID, jobID)
+	return nil
 }
 
 func (l *localMailBox) Done() bool {
@@ -225,6 +278,10 @@ func (r *rpcMailBox) Serve() {
 
 func (r *rpcMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 	return []Job{}, nil
+}
+
+func (r *rpcMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
+	return nil
 }
 
 func (r *rpcMailBox) Done() bool {

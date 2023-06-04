@@ -21,12 +21,13 @@ var _ = Describe("LocalWorker", func() {
 	var (
 		localWorker mr.Worker
 		coor        *mr.Coordinator
+		fileNames   []string = []string{"pg-being_ernest.txt", "pg-grimm.txt"}
 	)
 	const (
 		nReduce = 10
 	)
 	BeforeEach(func() {
-		coor = mr.NewLocalCoordinator()
+		coor = mr.NewLocalCoordinator([]string{}, nReduce)
 		localWorker = mr.NewLocalWorker(coor.MailBox, Map, Reduce, nReduce)
 		go localWorker.Serve(context.Background())
 	})
@@ -42,11 +43,11 @@ var _ = Describe("LocalWorker", func() {
 			err   error
 		)
 		BeforeEach(func() {
-			req = &mr.WordCountArgs{FileNames: []string{"pg-being_ernest.txt", "pg-grimm.txt"}}
+			req = &mr.WordCountArgs{FileNames: fileNames}
 			reply = &mr.WordCountReply{}
 			err = coor.WordCount(req, reply)
 			Expect(err).ShouldNot(HaveOccurred())
-			coor.WaitForMap()
+			coor.WaitForReduce()
 		})
 		It("should return correct jobs", func() {
 			Expect(err).ShouldNot(HaveOccurred())
