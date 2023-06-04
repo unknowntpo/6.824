@@ -120,15 +120,9 @@ func (c *Coordinator) FinishJob(workerID WorkerID, jobID JobID) error {
 	// job type
 	switch c.Phase {
 	case PHASE_MAP:
-		if _, ok := <-c.mapJobDoneChan; !ok {
-			// All map jobs are complete
-			close(c.mapJobDoneChan)
-		}
+		c.mapJobDoneChan <- struct{}{}
 	case PHASE_REDUCE:
-		if _, ok := <-c.reduceJobDoneChan; !ok {
-			// All map jobs are complete
-			close(c.mapJobDoneChan)
-		}
+		c.reduceJobDoneChan <- struct{}{}
 	}
 	return nil
 }
@@ -192,6 +186,7 @@ func (c *Coordinator) WaitForReduce() {
 
 func (c *Coordinator) WaitForMap() {
 	// wait until map job finished
+	//
 	<-c.mapJobDoneChan
 }
 
@@ -229,6 +224,7 @@ func NewLocalCoordinator(files []string, nReduce int) *Coordinator {
 	c.workerMap = NewWorkerMap()
 	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap, c)
 	c.mapJobDoneChan = make(chan struct{})
+	c.nReduce = nReduce
 	c.Serve()
 	return c
 }

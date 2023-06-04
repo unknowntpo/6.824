@@ -96,6 +96,17 @@ const (
 	TYPE_REDUCE
 )
 
+func (jt JobType) MarshalJSON() ([]byte, error) {
+	switch jt {
+	case TYPE_MAP:
+		return []byte(`"TYPE_MAP"`), nil
+	case TYPE_REDUCE:
+		return []byte(`"TYPE_REDUCE"`), nil
+	default:
+		return nil, fmt.Errorf("unknown JobType: %d", jt)
+	}
+}
+
 func NewJob(fileName string, jobType JobType) Job {
 	return Job{ID: NewJobID(), FileName: fileName, JobType: jobType}
 }
