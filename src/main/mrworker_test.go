@@ -27,7 +27,7 @@ var _ = Describe("LocalWorker", func() {
 		nReduce = 10
 	)
 	BeforeEach(func() {
-		coor = mr.NewLocalCoordinator([]string{}, nReduce)
+		coor = mr.NewLocalCoordinator(fileNames, nReduce)
 		localWorker = mr.NewLocalWorker(coor.MailBox, Map, Reduce, nReduce)
 		go localWorker.Serve(context.Background())
 	})

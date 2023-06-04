@@ -10,6 +10,9 @@ import (
 	"log"
 	"net/rpc"
 	"os"
+	"path/filepath"
+	"regexp"
+	"strconv"
 	"time"
 
 	uuid "github.com/google/uuid"
@@ -162,12 +165,23 @@ func (l *localWorker) Serve(ctx context.Context) error {
 	}
 }
 
+func getWd() string {
+	dir, err := os.Getwd()
+	if err != nil {
+		panic(err)
+	}
+	return dir
+}
+
 func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan error) {
+	dir := getWd()
+	l.logWorker("wd: %v", dir)
 	for _, j := range jobs {
 		b, err := ioutil.ReadFile(j.FileName)
 		if err != nil {
 			// FIXME: multiple errors ?
-			errChan <- fmt.Errorf("failed on ioutil.ReadFile: %v", err)
+			errChan <- fmt.Errorf("failed to read file [%v]: %v", j.FileName, err)
+			return
 		}
 		switch j.JobType {
 		case TYPE_MAP:
@@ -183,6 +197,7 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 				l.logWorker("writing file: %s", fileName)
 				if err := writeKeyValuesToFile(fileName, kvs); err != nil {
 					errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
+					return
 				}
 			}
 			l.logWorker("job [%v] is handled\n", debug(j))
@@ -190,6 +205,28 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 			l.logWorker("Reduce job [%v] is found\n", debug(j))
 			// Open mr-*-j.ReduceNum
 			// mr-1291122704-4
+			fileNames, err := getIntermediateFileNameByReduceNum(j.ReduceNum)
+			if err != nil {
+				errChan <- fmt.Errorf("failed on getIntermediateFileNameByReduceNum[%v]: %v", j.ReduceNum, err)
+				return
+			}
+
+			kvs := []KeyValue{}
+
+			l.logWorker("got fileNames: %v", fileNames)
+
+			for _, f := range fileNames {
+				_kvs, err := readKeyValuesFromFile(f)
+				if err != nil {
+					errChan <- fmt.Errorf("failed on readKeyValuesFromFile for %v: %v", f, err)
+					return
+				}
+				kvs = append(kvs, _kvs...)
+			}
+
+			// type ReduceFn func(key string, values []string) string
+			//		l.reduceFn()
+
 			/*
 				// open old intermediate file
 				fileName := getIntermediateFileName()
@@ -207,14 +244,51 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 	}
 }
 
+func getIntermediateFileNameByReduceNum(reduceNum int) ([]string, error) {
+	pattern := "mr-(\\d+)-(\\d+)"
+	root := "./"
+
+	fileNames := []string{}
+
+	// Find all files in the root directory
+	files, err := ioutil.ReadDir(root)
+	if err != nil {
+		return nil, fmt.Errorf("failed on ioutil.ReadDir: %v", err)
+	}
+
+	// Compile the regular expression pattern
+	re := regexp.MustCompile(pattern)
+
+	// Iterate over each file
+	for _, file := range files {
+		// Check if the file matches the pattern
+		if re.MatchString(file.Name()) {
+			// Extract the X and Y values from the filename
+			match := re.FindStringSubmatch(file.Name())
+			x, _ := strconv.Atoi(match[1])
+			y, _ := strconv.Atoi(match[2])
+
+			// Print the filename and extracted X, Y values
+			fmt.Printf("Filename: %s, X: %d, Y: %d\n", file.Name(), x, y)
+			fileNames = append(fileNames, file.Name())
+		}
+	}
+
+	fmt.Println("files", fileNames)
+
+	return fileNames, nil
+}
+
 func getIntermediateFileName(fileName string, keyIHash keyIHash) string {
 	return fmt.Sprintf("mr-%v-%v", ihash(fileName), keyIHash)
 }
 
 func writeKeyValuesToFile(fileName string, kvs []KeyValue) error {
-	f, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0644)
+	dir := getWd()
+	f, err := os.OpenFile(filepath.Join(dir, fileName), os.O_RDWR|os.O_CREATE, 0644)
+	defer f.Close()
 	if err != nil {
-		return err
+		return fmt.Errorf("failed on os.OpenFile", err)
 	}
 	enc := json.NewEncoder(f)
 	for _, kv := range kvs {
