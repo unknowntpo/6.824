@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
-	"io"
 	"io/ioutil"
 	"log"
 	"net/rpc"
@@ -13,7 +12,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"time"
 
 	uuid "github.com/google/uuid"
@@ -188,18 +186,58 @@ func getWd() string {
 	return dir
 }
 
+func (l *localWorker) doReduce(j Job, kvs []KeyValue) error {
+	l.logWorker("in doReduce for job %v", debug(j))
+	oname := fmt.Sprintf("mr-out-%d", j.ReduceNum)
+	dir := getWd()
+	path := filepath.Join(dir, oname)
+	ofile, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
+	defer ofile.Close()
+	if err != nil {
+		return fmt.Errorf("failed to open output file [%v]: %v", oname, err)
+	}
+
+	l.logWorker("writing ofile %v", ofile.Name())
+
+	// NOTE: Copied from src/main/mrsequential.go
+	//
+	// call Reduce on each distinct key in intermediate[],
+	// and print the result to mr-out-0.
+	//
+	i := 0
+	for i < len(kvs) {
+		j := i + 1
+		for j < len(kvs) && kvs[j].Key == kvs[i].Key {
+			j++
+		}
+		values := []string{}
+		for k := i; k < j; k++ {
+			values = append(values, kvs[k].Value)
+		}
+		output := l.reduceFn(kvs[i].Key, values)
+
+		// this is the correct format for each line of Reduce output.
+		fmt.Fprintf(ofile, "%v %v\n", kvs[i].Key, output)
+
+		i = j
+	}
+
+	return nil
+}
+
 func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan error) {
 	dir := getWd()
 	l.logWorker("wd: %v", dir)
 	for _, j := range jobs {
-		b, err := ioutil.ReadFile(j.FileName)
-		if err != nil {
-			// FIXME: multiple errors ?
-			errChan <- fmt.Errorf("failed to read file [%v]: %v", j.FileName, err)
-			return
-		}
 		switch j.JobType {
 		case TYPE_MAP:
+			b, err := ioutil.ReadFile(j.FileName)
+			if err != nil {
+				// FIXME: multiple errors ?
+				errChan <- fmt.Errorf("failed to read file [%v]: %v", j.FileName, err)
+				return
+			}
+
 			kvs := l.mapFn(j.FileName, string(b))
 			// intermediate file
 			kvsMap := groupBy(kvs, func(key string) keyIHash {
@@ -232,7 +270,8 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 			l.logWorker("got fileNames: %v", fileNames)
 
 			for _, f := range fileNames {
-				_kvs, err := readKeyValuesFromFile(f)
+				l.logWorker("failed before readKeyValuesFromFile")
+				_kvs, err := l.readKeyValuesFromFile(f)
 				if err != nil {
 					errChan <- fmt.Errorf("failed on readKeyValuesFromFile for %v: %v", f, err)
 					return
@@ -240,19 +279,9 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 				kvs = append(kvs, _kvs...)
 			}
 
-			// type ReduceFn func(key string, values []string) string
-			//		l.reduceFn()
+			l.logWorker("job [%v] finish appending kvs: length: %v", debug(j), len(kvs))
 
-			/*
-				// open old intermediate file
-				fileName := getIntermediateFileName()
-				kvs, err := readKeyValuesFromFile(fileName)
-				if err != nil {
-					errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
-				}
-				_ = kvs
-				// type ReduceFn func(key string, values []string) string
-			*/
+			l.doReduce(j, kvs)
 		}
 		if err := l.coMailBox.FinishJob(l.ID, j.ID); err != nil {
 			errChan <- fmt.Errorf("failed on l.coMailBox.FinishJob: %v", err)
@@ -261,7 +290,7 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 }
 
 func getIntermediateFileNameByReduceNum(reduceNum int) ([]string, error) {
-	pattern := "mr-(\\d+)-(\\d+)"
+	pattern := fmt.Sprintf("mr-(\\d+)-%d", reduceNum)
 	root := "./"
 
 	fileNames := []string{}
@@ -279,13 +308,6 @@ func getIntermediateFileNameByReduceNum(reduceNum int) ([]string, error) {
 	for _, file := range files {
 		// Check if the file matches the pattern
 		if re.MatchString(file.Name()) {
-			// Extract the X and Y values from the filename
-			match := re.FindStringSubmatch(file.Name())
-			x, _ := strconv.Atoi(match[1])
-			y, _ := strconv.Atoi(match[2])
-
-			// Print the filename and extracted X, Y values
-			fmt.Printf("Filename: %s, X: %d, Y: %d\n", file.Name(), x, y)
 			fileNames = append(fileNames, file.Name())
 		}
 	}
@@ -304,41 +326,36 @@ func writeKeyValuesToFile(fileName string, kvs []KeyValue) error {
 	f, err := os.OpenFile(filepath.Join(dir, fileName), os.O_RDWR|os.O_CREATE, 0644)
 	defer f.Close()
 	if err != nil {
-		return fmt.Errorf("failed on os.OpenFile", err)
+		return fmt.Errorf("failed on os.OpenFile: %v", err)
 	}
-	enc := json.NewEncoder(f)
-	for _, kv := range kvs {
-		if err := enc.Encode(&kv); err != nil {
-			switch err {
-			case io.EOF:
-				break
-			default:
-				return err
-			}
-		}
+	b, err := json.Marshal(KeyValues{kvs})
+	if err != nil {
+		return fmt.Errorf("failed on json.Marshal: %v", err)
+	}
+	if _, err := f.Write(b); err != nil {
+		return fmt.Errorf("failed on f.Write: %v", err)
 	}
 	return nil
 }
 
-func readKeyValuesFromFile(fileName string) ([]KeyValue, error) {
-	f, err := os.OpenFile(fileName, os.O_RDWR, 0644)
+func (l *localWorker) readKeyValuesFromFile(fileName string) ([]KeyValue, error) {
+	path := filepath.Join(getWd(), fileName)
+	f, err := os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed on os.OpenFile for %v: %v", path, err)
 	}
-	dec := json.NewDecoder(f)
-	out := make([]KeyValue, 0, 1000)
-	for {
-		var kv KeyValue
-		if err := dec.Decode(&kv); err != nil {
-			switch err {
-			case io.EOF:
-				break
-			default:
-				return nil, err
-			}
-		}
-		out = append(out, kv)
+
+	b, err := ioutil.ReadAll(f)
+	if err != nil {
+		return nil, fmt.Errorf("failed on ioutil.ReadAll for %v: %v", path, err)
 	}
+
+	out := KeyValues{KVS: make([]KeyValue, 0, 1000)}
+	if err := json.Unmarshal(b, &out); err != nil {
+		return nil, fmt.Errorf("failed on json.Unmarshal for %v: %v", path, err)
+	}
+
+	return out.KVS, nil
 }
 
 func (l *localWorker) Shutdown() { return }
