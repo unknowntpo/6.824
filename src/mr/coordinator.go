@@ -222,10 +222,14 @@ func NewLocalCoordinator(files []string, nReduce int) *Coordinator {
 // main/mrcoordinator.go calls this function.
 // nReduce is the number of reduce tasks to use.
 func NewRPCCoordinator(files []string, nReduce int) *Coordinator {
-	m := &rpcMailBox{}
-	c := Coordinator{MailBox: m}
+	c := &Coordinator{nReduce: nReduce}
+	m := &localMailBox{coorService: c}
+	c.MailBox = m
+	c.workerMap = NewWorkerMap()
+	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap, c)
+	c.nReduce = nReduce
 	c.Serve()
-	return &c
+	return c
 }
 
 type CoorMailBox interface {
@@ -253,8 +257,9 @@ func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 }
 
 func (l *localMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
-	// Find job in wokrerMap
-	l.coorService.FinishJob(workerID, jobID)
+	if err := l.coorService.FinishJob(workerID, jobID); err != nil {
+		return fmt.Errorf("failed on l.coorService.FinishJob: %v", err)
+	}
 	return nil
 }
 
@@ -269,10 +274,11 @@ func (l *localMailBox) Example(args *ExampleArgs, reply *ExampleReply) error {
 	return nil
 }
 
-type rpcMailBox struct {
+type RPCMailBox struct {
+	coorService *Coordinator
 }
 
-func (r *rpcMailBox) Serve() {
+func (r *RPCMailBox) Serve() {
 	rpc.Register(r)
 	rpc.HandleHTTP()
 	//l, e := net.Listen("tcp", ":1234")
@@ -285,21 +291,28 @@ func (r *rpcMailBox) Serve() {
 	go http.Serve(l, nil)
 }
 
-func (r *rpcMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
-	return []Job{}, nil
+func (r *RPCMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
+	jobs, err := r.coorService.GetJobs(workerID)
+	if err != nil {
+		return nil, fmt.Errorf("failed on l.coorService.GetJobs: %v", err)
+	}
+	return jobs, nil
 }
 
-func (r *rpcMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
+func (r *RPCMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
+	if err := r.coorService.FinishJob(workerID, jobID); err != nil {
+		return fmt.Errorf("failed on l.coorService.FinishJob: %v", err)
+	}
 	return nil
 }
 
-func (r *rpcMailBox) Done() bool {
+func (r *RPCMailBox) Done() bool {
 	// hang here forever
 	// TODO: Handle this done check
 	return true
 }
 
-func (r *rpcMailBox) Example(args *ExampleArgs, reply *ExampleReply) error {
+func (r *RPCMailBox) Example(args *ExampleArgs, reply *ExampleReply) error {
 	reply.Y = args.X + 1
 	return nil
 }
