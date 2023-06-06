@@ -199,6 +199,8 @@ func (l *localWorker) doReduce(j Job, kvs []KeyValue) error {
 
 	l.logWorker("writing ofile %v", ofile.Name())
 
+	sort.Sort(ByKey(kvs))
+
 	// NOTE: Copied from src/main/mrsequential.go
 	//
 	// call Reduce on each distinct key in intermediate[],
@@ -246,7 +248,6 @@ func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan e
 
 			for keyIHash, kvs := range kvsMap {
 				// format: map-<ihash(j.filename)>-<keyIHash>
-				sort.Sort(ByKey(kvs))
 				fileName := getIntermediateFileName(j.FileName, keyIHash)
 				l.logWorker("writing file: %s", fileName)
 				if err := writeKeyValuesToFile(fileName, kvs); err != nil {
