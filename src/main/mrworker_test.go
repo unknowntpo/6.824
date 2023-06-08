@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
@@ -19,7 +22,7 @@ func TestWorker(t *testing.T) {
 
 var _ = Describe("LocalWorker", func() {
 	var (
-		localWorker mr.Worker
+		localWorker *mr.Worker
 		coor        *mr.Coordinator
 		fileNames   []string = []string{"pg-being_ernest.txt", "pg-grimm.txt"}
 	)
@@ -52,6 +55,7 @@ var _ = Describe("LocalWorker", func() {
 		It("should return correct jobs", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(req.X + 1).To(Equal(reply.Y))
+			// Open mr-out-Y, and compare to correct answer
 		})
 	})
 })
@@ -85,3 +89,74 @@ func Reduce(key string, values []string) string {
 	// return the number of occurrences of this word.
 	return strconv.Itoa(len(values))
 }
+
+var _ = Describe("pareFile", func() {
+	When("test file is written", func() {
+		var (
+			f   *os.File
+			out kvMap
+		)
+		BeforeEach(func() {
+			f = writeToFile(prepareDummy())
+			out = parseResultFile(f)
+		})
+		It("should return right result", func() {
+			want := kvMap{
+				"A":       {"A", "509"},
+				"ABOUT":   {"ABOUT", "2"},
+				"ACT":     {"ACT", "8"},
+				"ACTRESS": {"ACTRESS", "1"},
+			}
+			Expect(out).To(Equal(want))
+		})
+	})
+
+})
+
+type kvMap map[string]mr.KeyValue
+
+func parseResultFile(f *os.File) kvMap {
+	out := kvMap{}
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
+		kvPair := strings.Split(line, " ")
+		if len(kvPair) != 2 {
+			panic(fmt.Sprintf("wrong format, got %v, want <key> <value>", kvPair))
+		}
+		key := kvPair[0]
+		value := kvPair[1]
+		out[key] = mr.KeyValue{Key: key, Value: value}
+	}
+	fmt.Println(">>>>>got", out)
+	return out
+}
+
+func writeToFile(b []byte) *os.File {
+	file, err := os.Create("file.txt")
+	must(err)
+	_, err = file.Write(b)
+	must(err)
+	return file
+}
+
+func must(err error) {
+	if err != nil {
+		panic(err)
+	}
+
+}
+
+// helper
+func prepareDummy() []byte {
+	return []byte(dummy)
+}
+
+const dummy = `
+A 509
+ABOUT 2
+ACT 8
+ACTRESS 1
+`
+
+// writeToFile(prepareDummy())

@@ -127,20 +127,14 @@ func NewJob(fileName string, jobType JobType) Job {
 	return Job{ID: NewJobID(), FileName: fileName, JobType: jobType}
 }
 
-type Worker interface {
-	IsHealthy() bool
-	Serve(ctx context.Context) error
-	Shutdown()
-}
-
 type WorkerID string
 
 func NewWorkerID() WorkerID {
 	return WorkerID(uuid.Must(uuid.NewRandom()).String())
 }
 
-func NewLocalWorker(m CoorMailBox, mapFn MapFn, reduceFn ReduceFn, nReduce int) Worker {
-	return &localWorker{
+func NewLocalWorker(m CoorMailBox, mapFn MapFn, reduceFn ReduceFn, nReduce int) *Worker {
+	return &Worker{
 		ID:        NewWorkerID(),
 		nReduce:   nReduce,
 		coMailBox: m,
@@ -149,7 +143,7 @@ func NewLocalWorker(m CoorMailBox, mapFn MapFn, reduceFn ReduceFn, nReduce int) 
 	}
 }
 
-type localWorker struct {
+type Worker struct {
 	ID        WorkerID
 	nReduce   int
 	coMailBox CoorMailBox
@@ -157,8 +151,8 @@ type localWorker struct {
 	reduceFn  ReduceFn
 }
 
-func (l *localWorker) IsHealthy() bool { return true }
-func (l *localWorker) Serve(ctx context.Context) error {
+func (l *Worker) IsHealthy() bool { return true }
+func (l *Worker) Serve(ctx context.Context) error {
 	timer := time.NewTicker(300 * time.Millisecond)
 	errChan := make(chan error, 30)
 	for {
@@ -186,7 +180,7 @@ func getWd() string {
 	return dir
 }
 
-func (l *localWorker) doReduce(j Job, kvs []KeyValue) error {
+func (l *Worker) doReduce(j Job, kvs []KeyValue) error {
 	l.logWorker("in doReduce for job %v", debug(j))
 	oname := fmt.Sprintf("mr-out-%d", j.ReduceNum)
 	dir := getWd()
@@ -227,7 +221,7 @@ func (l *localWorker) doReduce(j Job, kvs []KeyValue) error {
 	return nil
 }
 
-func (l *localWorker) handleJobs(ctx context.Context, jobs []Job, errChan chan error) {
+func (l *Worker) handleJobs(ctx context.Context, jobs []Job, errChan chan error) {
 	dir := getWd()
 	l.logWorker("wd: %v", dir)
 	for _, j := range jobs {
@@ -339,7 +333,7 @@ func writeKeyValuesToFile(fileName string, kvs []KeyValue) error {
 	return nil
 }
 
-func (l *localWorker) readKeyValuesFromFile(fileName string) ([]KeyValue, error) {
+func (l *Worker) readKeyValuesFromFile(fileName string) ([]KeyValue, error) {
 	path := filepath.Join(getWd(), fileName)
 	f, err := os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
@@ -359,7 +353,7 @@ func (l *localWorker) readKeyValuesFromFile(fileName string) ([]KeyValue, error)
 	return out.KVS, nil
 }
 
-func (l *localWorker) Shutdown() { return }
+func (l *Worker) Shutdown() { return }
 
 type rpcWorker struct{}
 
@@ -411,6 +405,6 @@ func call(rpcname string, args interface{}, reply interface{}) bool {
 	return false
 }
 
-func (l *localWorker) logWorker(format string, args ...interface{}) {
+func (l *Worker) logWorker(format string, args ...interface{}) {
 	log.Printf(fmt.Sprintf("WORKER[%v]\t", l.ID)+format, args...)
 }
