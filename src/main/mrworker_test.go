@@ -90,15 +90,30 @@ func Reduce(key string, values []string) string {
 	return strconv.Itoa(len(values))
 }
 
-var _ = Describe("pareFile", func() {
+func getwd() string {
+	dir, err := os.Getwd()
+	must(err)
+	return dir
+}
+
+var _ = Describe("parseFile", func() {
 	When("test file is written", func() {
 		var (
 			f   *os.File
 			out kvMap
+			err error
 		)
 		BeforeEach(func() {
-			f = writeToFile(prepareDummy())
-			out = parseResultFile(f)
+			f, err = os.Create("file.txt")
+			Expect(err).ShouldNot(HaveOccurred())
+			fmt.Fprint(f, dummy)
+			f.Close()
+
+			f, err = os.Open("file.txt")
+			Expect(err).ShouldNot(HaveOccurred())
+
+			out, err = parseResultFile(f)
+			Expect(err).ShouldNot(HaveOccurred())
 		})
 		It("should return right result", func() {
 			want := kvMap{
@@ -115,41 +130,29 @@ var _ = Describe("pareFile", func() {
 
 type kvMap map[string]mr.KeyValue
 
-func parseResultFile(f *os.File) kvMap {
+func parseResultFile(f *os.File) (kvMap, error) {
 	out := kvMap{}
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
 		line := scanner.Text()
 		kvPair := strings.Split(line, " ")
 		if len(kvPair) != 2 {
-			panic(fmt.Sprintf("wrong format, got %v, want <key> <value>", kvPair))
+			continue
 		}
 		key := kvPair[0]
 		value := kvPair[1]
 		out[key] = mr.KeyValue{Key: key, Value: value}
 	}
-	fmt.Println(">>>>>got", out)
-	return out
-}
-
-func writeToFile(b []byte) *os.File {
-	file, err := os.Create("file.txt")
-	must(err)
-	_, err = file.Write(b)
-	must(err)
-	return file
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("reading standard input: %v", err)
+	}
+	return out, nil
 }
 
 func must(err error) {
 	if err != nil {
 		panic(err)
 	}
-
-}
-
-// helper
-func prepareDummy() []byte {
-	return []byte(dummy)
 }
 
 const dummy = `

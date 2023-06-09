@@ -17,9 +17,16 @@ mr/build/seq: mr/build/plugin
 mr/test/once:
 	cd main && bash test-mr.sh
 
+FOCUS ?=
+ifeq ($(FOCUS),)
+		FOCUSFLAG :=
+else
+		FOCUSFLAG := -ginkgo.focus=$(FOCUS)
+endif
+
 ## mr/test/unit: run unit tests for worker and coordinator
 mr/test/unit: mr/build/plugin
-	go test -v ./main/mrworker.go ./main/mrworker_test.go
+	go test -v ./main/mrworker.go ./main/mrworker_test.go $(FOCUSFLAG)
 
 ## mr/build/plugin: build wc.so
 mr/build/plugin:
