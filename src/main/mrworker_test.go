@@ -56,6 +56,8 @@ var _ = Describe("LocalWorker", func() {
 			Expect(err).ShouldNot(HaveOccurred())
 			Expect(req.X + 1).To(Equal(reply.Y))
 			// Open mr-out-Y, and compare to correct answer
+			// FP approach
+			// Assert([mr-out-0, mr-out-1, ...].collect()).Equal([mr-out-correct].collect())
 		})
 	})
 })
