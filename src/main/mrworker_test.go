@@ -104,15 +104,13 @@ var _ = Describe("parseFile", func() {
 			err error
 		)
 		BeforeEach(func() {
-			f, err = os.Create("file.txt")
+			fileName := "file.txt"
+			f, err = os.Create(fileName)
 			Expect(err).ShouldNot(HaveOccurred())
 			fmt.Fprint(f, dummy)
 			f.Close()
 
-			f, err = os.Open("file.txt")
-			Expect(err).ShouldNot(HaveOccurred())
-
-			out, err = parseResultFile(f)
+			out, err = parseResultFile(fileName)
 			Expect(err).ShouldNot(HaveOccurred())
 		})
 		It("should return right result", func() {
@@ -130,7 +128,12 @@ var _ = Describe("parseFile", func() {
 
 type kvMap map[string]mr.KeyValue
 
-func parseResultFile(f *os.File) (kvMap, error) {
+func parseResultFile(fileName string) (kvMap, error) {
+	f, err := os.Open(fileName)
+	if err != nil {
+		return nil, err
+	}
+
 	out := kvMap{}
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {
