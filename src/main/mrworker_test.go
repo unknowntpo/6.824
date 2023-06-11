@@ -54,13 +54,24 @@ var _ = Describe("LocalWorker", func() {
 		})
 		It("should return correct jobs", func() {
 			Expect(err).ShouldNot(HaveOccurred())
-			Expect(req.X + 1).To(Equal(reply.Y))
 			// Open mr-out-Y, and compare to correct answer
-			// FP approach
-			// Assert([mr-out-0, mr-out-1, ...].collect()).Equal([mr-out-correct].collect())
+			Expect(collectKvMap(
+				_map(
+					genOutputFileNamesByNReduce(nReduce), func(fileName string) kvMap {
+						return mustParseResultFile(fileName)
+					})...,
+			)).To(Equal(mustParseResultFile("mr-out-correct")))
 		})
 	})
 })
+
+func _map(fileNames []string, fn func(fileName string) kvMap) []kvMap {
+	out := make([]kvMap, 0, len(fileNames))
+	for _, fName := range fileNames {
+		out = append(out, fn(fName))
+	}
+	return out
+}
 
 // Copied from mrapps/wc.go
 //
@@ -98,7 +109,7 @@ func getwd() string {
 	return dir
 }
 
-var _ = Describe("parseFile", func() {
+var _ = Describe("parseResultFile", func() {
 	When("test file is written", func() {
 		var (
 			f   *os.File
@@ -129,6 +140,37 @@ var _ = Describe("parseFile", func() {
 })
 
 type kvMap map[string]mr.KeyValue
+
+func genOutputFileNamesByNReduce(nReduce int) []string {
+	out := make([]string, 0, nReduce)
+	for i := 0; i < nReduce; i++ {
+		// TODO: Don't hard code filename
+		out = append(out, fmt.Sprintf("mr-out-%d", i))
+	}
+	return out
+}
+
+func collectKvMap(maps ...kvMap) kvMap {
+	out := kvMap{}
+	for _, m := range maps {
+		for k, v := range m {
+			if _v, ok := out[k]; !ok {
+				// k not exist in out, add it
+				out[k] = v
+			} else {
+				// k exists in out, merge them together
+				out[k] = mr.KeyValue{Key: k, Value: v.Value + _v.Value}
+			}
+		}
+	}
+	return out
+}
+
+func mustParseResultFile(fileName string) kvMap {
+	m, err := parseResultFile(fileName)
+	must(err)
+	return m
+}
 
 func parseResultFile(fileName string) (kvMap, error) {
 	f, err := os.Open(fileName)
