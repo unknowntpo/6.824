@@ -133,13 +133,20 @@ func NewWorkerID() WorkerID {
 	return WorkerID(uuid.Must(uuid.NewRandom()).String())
 }
 
-func NewLocalWorker(m CoorMailBox, mapFn MapFn, reduceFn ReduceFn, nReduce int) *Worker {
+func NewLocalWorker(
+	m CoorMailBox,
+	mapFn MapFn,
+	reduceFn ReduceFn,
+	nReduce int,
+	workDir string,
+) *Worker {
 	return &Worker{
 		ID:        NewWorkerID(),
 		nReduce:   nReduce,
 		coMailBox: m,
 		mapFn:     mapFn,
 		reduceFn:  reduceFn,
+		workDir:   workDir,
 	}
 }
 
@@ -149,6 +156,7 @@ type Worker struct {
 	coMailBox CoorMailBox
 	mapFn     MapFn
 	reduceFn  ReduceFn
+	workDir   string
 }
 
 func (l *Worker) IsHealthy() bool { return true }
@@ -172,19 +180,10 @@ func (l *Worker) Serve(ctx context.Context) error {
 	}
 }
 
-func getWd() string {
-	dir, err := os.Getwd()
-	if err != nil {
-		panic(err)
-	}
-	return dir
-}
-
 func (l *Worker) doReduce(j Job, kvs []KeyValue) error {
 	l.logWorker("in doReduce for job %v", debug(j))
 	oname := fmt.Sprintf("mr-out-%d", j.ReduceNum)
-	dir := getWd()
-	path := filepath.Join(dir, oname)
+	path := filepath.Join(l.workDir, oname)
 	ofile, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
 	defer ofile.Close()
 	if err != nil {
@@ -222,8 +221,6 @@ func (l *Worker) doReduce(j Job, kvs []KeyValue) error {
 }
 
 func (l *Worker) handleJobs(ctx context.Context, jobs []Job, errChan chan error) {
-	dir := getWd()
-	l.logWorker("wd: %v", dir)
 	for _, j := range jobs {
 		switch j.JobType {
 		case TYPE_MAP:
@@ -316,9 +313,8 @@ func getIntermediateFileName(fileName string, keyIHash keyIHash) string {
 	return fmt.Sprintf("mr-%v-%v", ihash(fileName), keyIHash)
 }
 
-func writeKeyValuesToFile(fileName string, kvs []KeyValue) error {
-	dir := getWd()
-	f, err := os.OpenFile(filepath.Join(dir, fileName), os.O_RDWR|os.O_CREATE, 0644)
+func (l *Worker) writeKeyValuesToFile(fileName string, kvs []KeyValue) error {
+	f, err := os.OpenFile(filepath.Join(l.workDir, fileName), os.O_RDWR|os.O_CREATE, 0644)
 	defer f.Close()
 	if err != nil {
 		return fmt.Errorf("failed on os.OpenFile: %v", err)
@@ -334,7 +330,7 @@ func writeKeyValuesToFile(fileName string, kvs []KeyValue) error {
 }
 
 func (l *Worker) readKeyValuesFromFile(fileName string) ([]KeyValue, error) {
-	path := filepath.Join(getWd(), fileName)
+	path := filepath.Join(l.workDir, fileName)
 	f, err := os.OpenFile(path, os.O_RDWR, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("failed on os.OpenFile for %v: %v", path, err)

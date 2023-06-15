@@ -11,6 +11,8 @@ import (
 	"unicode"
 
 	"6.824/mr"
+	"6.824/utils"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 )
@@ -20,18 +22,26 @@ func TestWorker(t *testing.T) {
 	RunSpecs(t, "Worker")
 }
 
+func getTestFileNames() []string {
+	return []string{}
+}
+
 var _ = Describe("LocalWorker", func() {
 	var (
 		localWorker *mr.Worker
 		coor        *mr.Coordinator
-		fileNames   []string = []string{"pg-being_ernest.txt", "pg-grimm.txt"}
+		// FIXME: Should be full pg-*.txt file, or the answer will not be correct
+		fileNames []string = []string{"pg-being_ernest.txt", "pg-grimm.txt"}
+		workDir   string
 	)
 	const (
 		nReduce = 10
 	)
 	BeforeEach(func() {
+		workDir = utils.GetWd()
 		coor = mr.NewLocalCoordinator(fileNames, nReduce)
-		localWorker = mr.NewLocalWorker(coor.MailBox, Map, Reduce, nReduce)
+		fileNames = getTestFileNames()
+		localWorker = mr.NewLocalWorker(coor.MailBox, Map, Reduce, nReduce, workDir)
 		go localWorker.Serve(context.Background())
 	})
 
