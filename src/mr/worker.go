@@ -239,9 +239,9 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job, errChan chan error)
 
 			for keyIHash, kvs := range kvsMap {
 				// format: map-<ihash(j.filename)>-<keyIHash>
-				fileName := getIntermediateFileName(j.FileName, keyIHash)
+				fileName := filepath.Join(l.workDir, getIntermediateFileName(j.FileName, keyIHash))
 				l.logWorker("writing file: %s", fileName)
-				if err := writeKeyValuesToFile(fileName, kvs); err != nil {
+				if err := l.writeKeyValuesToFile(fileName, kvs); err != nil {
 					errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
 					return
 				}
@@ -251,7 +251,7 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job, errChan chan error)
 			l.logWorker("Reduce job [%v] is found\n", debug(j))
 			// Open mr-*-j.ReduceNum
 			// mr-1291122704-4
-			fileNames, err := getIntermediateFileNameByReduceNum(j.ReduceNum)
+			fileNames, err := l.getIntermediateFileNameByReduceNum(j.ReduceNum)
 			if err != nil {
 				errChan <- fmt.Errorf("failed on getIntermediateFileNameByReduceNum[%v]: %v", j.ReduceNum, err)
 				return
@@ -281,9 +281,9 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job, errChan chan error)
 	}
 }
 
-func getIntermediateFileNameByReduceNum(reduceNum int) ([]string, error) {
+func (l *Worker) getIntermediateFileNameByReduceNum(reduceNum int) ([]string, error) {
 	pattern := fmt.Sprintf("mr-(\\d+)-%d", reduceNum)
-	root := "./"
+	root := l.workDir
 
 	fileNames := []string{}
 
@@ -314,7 +314,7 @@ func getIntermediateFileName(fileName string, keyIHash keyIHash) string {
 }
 
 func (l *Worker) writeKeyValuesToFile(fileName string, kvs []KeyValue) error {
-	f, err := os.OpenFile(filepath.Join(l.workDir, fileName), os.O_RDWR|os.O_CREATE, 0644)
+	f, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0644)
 	defer f.Close()
 	if err != nil {
 		return fmt.Errorf("failed on os.OpenFile: %v", err)

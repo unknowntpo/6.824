@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -22,25 +23,51 @@ func TestWorker(t *testing.T) {
 	RunSpecs(t, "Worker")
 }
 
-func getTestFileNames() []string {
-	return []string{}
+func getTestFileNames(workDir string) []string {
+	fileNames := []string{
+		"pg-sherlock_holmes.txt",
+		"pg-tom_sawyer.txt",
+		"pg-frankenstein.txt",
+		"pg-grimm.txt",
+		"pg-being_ernest.txt",
+		"pg-huckleberry_finn.txt",
+		"pg-metamorphosis.txt",
+		"pg-dorian_gray.txt",
+	}
+
+	mapFn := func(fileNames []string) []string {
+		forEach := func(names []string, fn func(string) string) []string {
+			out := make([]string, 0, len(names))
+			for _, n := range names {
+				out = append(out, fn(n))
+			}
+			return out
+		}
+		addWorkDirPrefixFn := func(fileName string) string {
+			return filepath.Join(workDir, fileName)
+		}
+		return forEach(fileNames, addWorkDirPrefixFn)
+	}
+	return mapFn(fileNames)
 }
+
+// []string -> fn -> []string
 
 var _ = Describe("LocalWorker", func() {
 	var (
 		localWorker *mr.Worker
 		coor        *mr.Coordinator
 		// FIXME: Should be full pg-*.txt file, or the answer will not be correct
-		fileNames []string = []string{"pg-being_ernest.txt", "pg-grimm.txt"}
+		fileNames []string
 		workDir   string
 	)
 	const (
 		nReduce = 10
 	)
 	BeforeEach(func() {
-		workDir = utils.GetWd()
+		workDir = filepath.Join(utils.GetWd(), "mr-tmp")
 		coor = mr.NewLocalCoordinator(fileNames, nReduce)
-		fileNames = getTestFileNames()
+		fileNames = getTestFileNames(utils.GetWd())
 		localWorker = mr.NewLocalWorker(coor.MailBox, Map, Reduce, nReduce, workDir)
 		go localWorker.Serve(context.Background())
 	})
