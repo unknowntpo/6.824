@@ -94,10 +94,10 @@ var _ = Describe("LocalWorker", func() {
 			// Open mr-out-Y, and compare to correct answer
 			Expect(collectKvMap(
 				_map(
-					genOutputFileNamesByNReduce(nReduce), func(fileName string) kvMap {
+					genOutputFileNamesByNReduce(workDir, nReduce), func(fileName string) kvMap {
 						return mustParseResultFile(fileName)
 					})...,
-			)).To(Equal(mustParseResultFile("mr-out-correct")))
+			)).To(Equal(mustParseResultFile(filepath.Join(workDir, "mr-out-correct"))))
 		})
 	})
 })
@@ -178,11 +178,12 @@ var _ = Describe("parseResultFile", func() {
 
 type kvMap map[string]mr.KeyValue
 
-func genOutputFileNamesByNReduce(nReduce int) []string {
+func genOutputFileNamesByNReduce(workDir string, nReduce int) []string {
 	out := make([]string, 0, nReduce)
 	for i := 0; i < nReduce; i++ {
 		// TODO: Don't hard code filename
-		out = append(out, fmt.Sprintf("mr-out-%d", i))
+		path := filepath.Join(workDir, fmt.Sprintf("mr-out-%d", i))
+		out = append(out, path)
 	}
 	return out
 }

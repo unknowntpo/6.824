@@ -4,6 +4,7 @@ help:
 	@echo 'Usage:'
 	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' |  sed -e 's/^/ /'
 
+TMP_DIR = ./main/mr-tmp
 
 ## mr/build/seq: build map-reduce https://pdos.csail.mit.edu/6.824/labs/lab-mr.html
 .PHONY: mr/build/seq
@@ -11,7 +12,9 @@ mr/build/seq: mr/build/plugin
 	# Ref: https://pdos.csail.mit.edu/6.824/labs/lab-mr.html
 	-rm ./main/mr-out*
 	go run ./main/mrsequential.go wc.so ./main/pg*.txt
-	more mr-out-0
+	mkdir -p $(TMP_DIR)
+	cp mr-out-0 $(TMP_DIR)/mr-out-correct
+	more $(TMP_DIR)/mr-out-correct
 
 ## mr/test/once: run main/test-mr.sh
 mr/test/once:
@@ -25,7 +28,9 @@ else
 endif
 
 ## mr/test/unit: run unit tests for worker and coordinator
-mr/test/unit: mr/build/plugin
+mr/test/unit: mr/build/seq
+	# we need to call mr/build/seq to build mr-out-correct first
+	# to make output of or worker implementation compare to it
 	go test -v ./main/mrworker.go ./main/mrworker_test.go $(FOCUSFLAG)
 
 ## mr/build/plugin: build wc.so

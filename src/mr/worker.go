@@ -246,9 +246,8 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job, errChan chan error)
 					return
 				}
 			}
-			l.logWorker("job [%v] is handled\n", debug(j))
+			l.logWorker("map job [%v] is done\n", debug(j))
 		case TYPE_REDUCE:
-			l.logWorker("Reduce job [%v] is found\n", debug(j))
 			// Open mr-*-j.ReduceNum
 			// mr-1291122704-4
 			fileNames, err := l.getIntermediateFileNameByReduceNum(j.ReduceNum)
@@ -262,7 +261,6 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job, errChan chan error)
 			l.logWorker("got fileNames: %v", fileNames)
 
 			for _, f := range fileNames {
-				l.logWorker("failed before readKeyValuesFromFile")
 				_kvs, err := l.readKeyValuesFromFile(f)
 				if err != nil {
 					errChan <- fmt.Errorf("failed on readKeyValuesFromFile for %v: %v", f, err)
@@ -271,9 +269,11 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job, errChan chan error)
 				kvs = append(kvs, _kvs...)
 			}
 
-			l.logWorker("job [%v] finish appending kvs: length: %v", debug(j), len(kvs))
-
-			l.doReduce(j, kvs)
+			if err := l.doReduce(j, kvs); err != nil {
+				errChan <- fmt.Errorf("failed on l.doReduce for %v: %v", j, err)
+				return
+			}
+			l.logWorker("reduce job [%v] is done\n", debug(j))
 		}
 		if err := l.coMailBox.FinishJob(l.ID, j.ID); err != nil {
 			errChan <- fmt.Errorf("failed on l.coMailBox.FinishJob: %v", err)
