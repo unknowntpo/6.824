@@ -223,7 +223,7 @@ func NewLocalCoordinator(files []string, nReduce int) *Coordinator {
 // nReduce is the number of reduce tasks to use.
 func NewRPCCoordinator(files []string, nReduce int) *Coordinator {
 	c := &Coordinator{nReduce: nReduce}
-	m := &localMailBox{coorService: c}
+	m := &RPCMailBox{coorService: c}
 	c.MailBox = m
 	c.workerMap = NewWorkerMap()
 	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap, c)
@@ -292,11 +292,24 @@ func (r *RPCMailBox) Serve() {
 }
 
 func (r *RPCMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
-	jobs, err := r.coorService.GetJobs(workerID)
-	if err != nil {
-		return nil, fmt.Errorf("failed on l.coorService.GetJobs: %v", err)
+	// should do rpc call
+	// declare an argument structure.
+	args := GetJobsArgs{}
+
+	// declare a reply structure.
+	reply := GetJobsReply{}
+
+	rpcName := "Coordinator.GetJobs"
+	if err := call(rpcName, &args, &reply); err != nil {
+		return nil, fmt.Errorf("failed on rpc call [%v]: %v", rpcName, err)
 	}
-	return jobs, nil
+	/*
+		jobs, err := r.coorService.GetJobs(workerID)
+		if err != nil {
+			return nil, fmt.Errorf("failed on l.coorService.GetJobs: %v", err)
+		}
+	*/
+	return reply.Jobs, nil
 }
 
 func (r *RPCMailBox) FinishJob(workerID WorkerID, jobID JobID) error {

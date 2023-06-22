@@ -14,16 +14,17 @@ import "time"
 import "os"
 import "fmt"
 
+const nReduce = 10
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Fprintf(os.Stderr, "Usage: mrcoordinator inputfiles...\n")
 		os.Exit(1)
 	}
 
-	m := mr.NewRPCCoordinator(os.Args[1:], 10)
+	m := mr.NewRPCCoordinator(os.Args[1:], nReduce)
+	go m.Serve()
 	for m.Done() == false {
 		time.Sleep(time.Second)
 	}
-
-	time.Sleep(time.Second)
 }

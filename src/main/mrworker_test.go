@@ -68,7 +68,7 @@ var _ = Describe("LocalWorker", func() {
 		workDir = filepath.Join(utils.GetWd(), "mr-tmp")
 		coor = mr.NewLocalCoordinator(fileNames, nReduce)
 		fileNames = getTestFileNames(utils.GetWd())
-		localWorker = mr.NewLocalWorker(coor.MailBox, Map, Reduce, nReduce, workDir)
+		localWorker = mr.NewWorker(coor.MailBox, Map, Reduce, nReduce, workDir)
 		go localWorker.Serve(context.Background())
 	})
 

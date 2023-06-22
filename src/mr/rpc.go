@@ -22,6 +22,13 @@ type ExampleReply struct {
 	Y int
 }
 
+type GetJobsArgs struct {
+}
+
+type GetJobsReply struct {
+	Jobs []Job
+}
+
 // Add your RPC definitions here.
 type WordCountArgs struct {
 	X         int

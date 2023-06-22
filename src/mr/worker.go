@@ -72,22 +72,6 @@ type MapFn func(key string, value string) []KeyValue
 // key: a word, values: a list of counts
 type ReduceFn func(key string, values []string) string
 
-// main/mrworker.go calls this function.
-func Work(
-	mapf MapFn,
-	reducef ReduceFn,
-) {
-
-	// init new worker
-	// // call example
-
-	// Your worker implementation here.
-
-	// uncomment to send the Example RPC to the coordinator.
-	CallExample()
-
-}
-
 type JobID string
 
 func NewJobID() JobID {
@@ -133,8 +117,8 @@ func NewWorkerID() WorkerID {
 	return WorkerID(uuid.Must(uuid.NewRandom()).String())
 }
 
-func NewLocalWorker(
-	m CoorMailBox,
+func NewWorker(
+	coorMailBox CoorMailBox,
 	mapFn MapFn,
 	reduceFn ReduceFn,
 	nReduce int,
@@ -143,7 +127,25 @@ func NewLocalWorker(
 	return &Worker{
 		ID:        NewWorkerID(),
 		nReduce:   nReduce,
-		coMailBox: m,
+		coMailBox: coorMailBox,
+		mapFn:     mapFn,
+		reduceFn:  reduceFn,
+		workDir:   workDir,
+	}
+}
+
+func NewRPCWorker(
+	co *Coordinator,
+	mapFn MapFn,
+	reduceFn ReduceFn,
+	nReduce int,
+	workDir string,
+) *Worker {
+	mailBox := &RPCMailBox{coorService: co}
+	return &Worker{
+		ID:        NewWorkerID(),
+		nReduce:   nReduce,
+		coMailBox: mailBox,
 		mapFn:     mapFn,
 		reduceFn:  reduceFn,
 		workDir:   workDir,
@@ -351,8 +353,6 @@ func (l *Worker) readKeyValuesFromFile(fileName string) ([]KeyValue, error) {
 
 func (l *Worker) Shutdown() { return }
 
-type rpcWorker struct{}
-
 // example function to show how to make an RPC call to the coordinator.
 //
 // the RPC argument and reply types are defined in rpc.go.
@@ -371,34 +371,28 @@ func CallExample() {
 	// the "Coordinator.Example" tells the
 	// receiving server that we'd like to call
 	// the Example() method of struct Coordinator.
-	ok := call("Coordinator.Example", &args, &reply)
-	if ok {
+	if err := call("Coordinator.Example", &args, &reply); err != nil {
 		// reply.Y should be 100.
-		fmt.Printf("reply.Y %v\n", reply.Y)
-	} else {
 		fmt.Printf("call failed!\n")
+	} else {
+		fmt.Printf(" reply.Y: %v\n", reply.Y)
 	}
 }
 
 // send an RPC request to the coordinator, wait for the response.
 // usually returns true.
 // returns false if something goes wrong.
-func call(rpcname string, args interface{}, reply interface{}) bool {
-	// c, err := rpc.DialHTTP("tcp", "127.0.0.1"+":1234")
+func call(rpcname string, args interface{}, reply interface{}) error {
 	sockname := coordinatorSock()
 	c, err := rpc.DialHTTP("unix", sockname)
 	if err != nil {
-		log.Fatal("dialing:", err)
+		return fmt.Errorf("dialing: %v", err)
 	}
 	defer c.Close()
-
-	err = c.Call(rpcname, args, reply)
-	if err == nil {
-		return true
+	if err := c.Call(rpcname, args, reply); err != nil {
+		return fmt.Errorf("failed on rpc.Client.Call: %v", err)
 	}
-
-	fmt.Println(err)
-	return false
+	return nil
 }
 
 func (l *Worker) logWorker(format string, args ...interface{}) {

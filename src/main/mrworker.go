@@ -11,13 +11,17 @@ package main
 //
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
 	"plugin"
 
 	"6.824/mr"
+	"6.824/utils"
 )
+
+const nReduce = 10
 
 func main() {
 	if len(os.Args) != 2 {
@@ -27,7 +31,9 @@ func main() {
 
 	mapf, reducef := loadPlugin(os.Args[1])
 
-	mr.Work(mapf, reducef)
+	localWorker := mr.NewWorker(&mr.RPCMailBox{}, mapf, reducef, nReduce, utils.GetWd())
+	go localWorker.Serve(context.Background())
+	select {}
 }
 
 // load the application Map and Reduce functions
