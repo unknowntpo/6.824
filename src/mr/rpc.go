@@ -23,10 +23,12 @@ type ExampleReply struct {
 }
 
 type GetJobsArgs struct {
+	ID WorkerID
 }
 
 type GetJobsReply struct {
 	Jobs []Job
+	Err  error
 }
 
 // Add your RPC definitions here.

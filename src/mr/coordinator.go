@@ -9,6 +9,7 @@ import (
 	"net/rpc"
 	"os"
 	"sync"
+	"time"
 )
 
 type Coordinator struct {
@@ -188,20 +189,28 @@ func (c *Coordinator) Serve() {
 // main/mrcoordinator.go calls Done() periodically to find out
 // if the entire job has finished.
 func (c *Coordinator) Done() bool {
-	return c.MailBox.Done()
+	// FIXME: should handle this
+	time.Sleep(10 * time.Second)
+	return true
 }
 
-func (c *Coordinator) GetJobs(id WorkerID) ([]Job, error) {
+func (c *Coordinator) GetJobs(args GetJobsArgs, reply *GetJobsReply) error {
 	// TODO: Take batch of jobs from jobQueue
 	j, err := c.JobQueue.GetJob()
 	if err != nil {
-		return nil, fmt.Errorf("failed on c.JobQueue.GetJob: %v", err)
+		reply.Jobs = nil
+		reply.Err = fmt.Errorf("failed on c.JobQueue.GetJob: %v", err)
+		return reply.Err
 	}
-	if err := c.workerMap.AddJob(j, id); err != nil {
-		return nil, fmt.Errorf("failed on c.workerMap.AddJob: %v", err)
+	if err := c.workerMap.AddJob(j, args.ID); err != nil {
+		reply.Jobs = nil
+		reply.Err = fmt.Errorf("failed on c.workerMap.AddJob: %v", err)
+		return reply.Err
 	}
 	c.logCoordinator("c.workerMap: %v", debug(c.workerMap))
-	return []Job{j}, nil
+	reply.Jobs = []Job{j}
+	reply.Err = nil
+	return nil
 }
 
 const DefaultJobQueueCap = 10
@@ -228,7 +237,6 @@ func NewRPCCoordinator(files []string, nReduce int) *Coordinator {
 	c.workerMap = NewWorkerMap()
 	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap, c)
 	c.nReduce = nReduce
-	c.Serve()
 	return c
 }
 
@@ -249,11 +257,13 @@ func (l *localMailBox) Serve() {
 }
 
 func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
-	jobs, err := l.coorService.GetJobs(workerID)
-	if err != nil {
-		return nil, fmt.Errorf("failed on l.coorService.GetJobs: %v", err)
+	args := GetJobsArgs{workerID}
+	reply := &GetJobsReply{}
+	l.coorService.GetJobs(args, reply)
+	if reply.Err != nil {
+		return nil, fmt.Errorf("failed on l.coorService.GetJobs: %v", reply.Err)
 	}
-	return jobs, nil
+	return reply.Jobs, nil
 }
 
 func (l *localMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
@@ -264,9 +274,7 @@ func (l *localMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
 }
 
 func (l *localMailBox) Done() bool {
-	// hang here forever
-	// TODO: Handle this done check
-	return true
+	return l.coorService.Done()
 }
 
 func (l *localMailBox) Example(args *ExampleArgs, reply *ExampleReply) error {
@@ -279,7 +287,7 @@ type RPCMailBox struct {
 }
 
 func (r *RPCMailBox) Serve() {
-	rpc.Register(r)
+	rpc.Register(r.coorService)
 	rpc.HandleHTTP()
 	//l, e := net.Listen("tcp", ":1234")
 	sockname := coordinatorSock()
@@ -294,7 +302,7 @@ func (r *RPCMailBox) Serve() {
 func (r *RPCMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 	// should do rpc call
 	// declare an argument structure.
-	args := GetJobsArgs{}
+	args := GetJobsArgs{ID: workerID}
 
 	// declare a reply structure.
 	reply := GetJobsReply{}
@@ -322,7 +330,7 @@ func (r *RPCMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
 func (r *RPCMailBox) Done() bool {
 	// hang here forever
 	// TODO: Handle this done check
-	return true
+	return r.coorService.Done()
 }
 
 func (r *RPCMailBox) Example(args *ExampleArgs, reply *ExampleReply) error {
