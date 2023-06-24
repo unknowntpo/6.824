@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 	"unicode"
 
 	"6.824/mr"
@@ -87,7 +88,7 @@ var _ = Describe("LocalWorker", func() {
 			reply = &mr.WordCountReply{}
 			err = coor.WordCount(req, reply)
 			Expect(err).ShouldNot(HaveOccurred())
-			coor.WaitForReduce()
+			coor.Wait()
 		})
 		It("should return correct jobs", func() {
 			Expect(err).ShouldNot(HaveOccurred())

@@ -10,7 +10,6 @@ package main
 //
 
 import "6.824/mr"
-import "time"
 import "os"
 import "fmt"
 
@@ -31,7 +30,5 @@ func main() {
 		return
 	}
 	// FIXME: What does this do?
-	for m.Done() == false {
-		time.Sleep(time.Second)
-	}
+	m.Wait()
 }

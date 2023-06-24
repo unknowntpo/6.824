@@ -31,6 +31,14 @@ type GetJobsReply struct {
 	Err  error
 }
 
+type FinishJobsArgs struct {
+	WorkerID WorkerID
+	JobID    JobID
+}
+
+type FinishJobsReply struct {
+}
+
 // Add your RPC definitions here.
 type WordCountArgs struct {
 	X         int

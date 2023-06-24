@@ -9,14 +9,13 @@ import (
 	"net/rpc"
 	"os"
 	"sync"
-	"time"
 )
 
 type Coordinator struct {
 	// Your definitions here.
 	JobQueue  *JobQueue
 	MailBox   CoorMailBox
-	workerMap WorkerMap
+	workerMap *WorkerMap
 	nReduce   int
 
 	mapJobWaitGroup    sync.WaitGroup
@@ -33,10 +32,16 @@ const (
 )
 
 // WorkerMap stores every workers' jobs
-type WorkerMap map[WorkerID]map[JobID]struct{}
 
-func NewWorkerMap() WorkerMap {
-	return WorkerMap{}
+type WorkerMap struct {
+	mu sync.Mutex
+	m  map[WorkerID]map[JobID]struct{}
+}
+
+func NewWorkerMap() *WorkerMap {
+	m := &WorkerMap{}
+	m.m = map[WorkerID]map[JobID]struct{}{}
+	return m
 }
 
 func debug(i interface{}) string {
@@ -48,8 +53,10 @@ func debug(i interface{}) string {
 }
 
 // AddJob add job to specific worker.
-func (m WorkerMap) AddJob(j Job, workerID WorkerID) error {
-	jobsForWorker, ok := m[workerID]
+func (m *WorkerMap) AddJob(j Job, workerID WorkerID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	jobsForWorker, ok := m.m[workerID]
 	if !ok {
 		// it's new worker
 		jobsForWorker = map[JobID]struct{}{}
@@ -60,21 +67,23 @@ func (m WorkerMap) AddJob(j Job, workerID WorkerID) error {
 	}
 	// Job Not Found
 	jobsForWorker[j.ID] = struct{}{}
-	m[workerID] = jobsForWorker
+	m.m[workerID] = jobsForWorker
 	return nil
 }
 
-func (m WorkerMap) FinishJob(workerID WorkerID, jobID JobID) error {
+func (m *WorkerMap) FinishJob(workerID WorkerID, jobID JobID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	var jobs map[JobID]struct{}
 	var ok bool
-	if jobs, ok = m[workerID]; !ok {
+	if jobs, ok = m.m[workerID]; !ok {
 		return fmt.Errorf("worker not found")
 	}
 	if _, ok := jobs[jobID]; !ok {
 		return fmt.Errorf("job not found")
 	}
 	delete(jobs, jobID)
-	m[workerID] = jobs
+	m.m[workerID] = jobs
 	return nil
 }
 
@@ -115,9 +124,9 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	return nil
 }
 
-func (c *Coordinator) FinishJob(workerID WorkerID, jobID JobID) error {
-	if err := c.workerMap.FinishJob(workerID, jobID); err != nil {
-		return fmt.Errorf("failed on Coordinator.FinishJob")
+func (c *Coordinator) FinishJob(args *FinishJobsArgs, reply *FinishJobsReply) error {
+	if err := c.workerMap.FinishJob(args.WorkerID, args.JobID); err != nil {
+		return fmt.Errorf("failed on Coordinator.FinishJob for workerID [%v], jobID: [%v]: %v", args.WorkerID, args.JobID, err)
 	}
 	// job type
 	switch c.Phase {
@@ -186,12 +195,10 @@ func (c *Coordinator) Serve() {
 	c.MailBox.Serve()
 }
 
-// main/mrcoordinator.go calls Done() periodically to find out
-// if the entire job has finished.
-func (c *Coordinator) Done() bool {
-	// FIXME: should handle this
-	time.Sleep(10 * time.Second)
-	return true
+// main/mrcoordinator.go calls Wait() to block until all jobs are finished.
+func (c *Coordinator) Wait() {
+	c.WaitForMap()
+	c.WaitForReduce()
 }
 
 func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
@@ -244,7 +251,6 @@ func NewRPCCoordinator(files []string, nReduce int) *Coordinator {
 type CoorMailBox interface {
 	Serve()
 	GetJobs(id WorkerID) ([]Job, error)
-	Done() bool
 	FinishJob(workerID WorkerID, jobID JobID) error
 	Example(args *ExampleArgs, reply *ExampleReply) error
 }
@@ -268,14 +274,12 @@ func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 }
 
 func (l *localMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
-	if err := l.coorService.FinishJob(workerID, jobID); err != nil {
+	args := FinishJobsArgs{}
+	reply := FinishJobsReply{}
+	if err := l.coorService.FinishJob(&args, &reply); err != nil {
 		return fmt.Errorf("failed on l.coorService.FinishJob: %v", err)
 	}
 	return nil
-}
-
-func (l *localMailBox) Done() bool {
-	return l.coorService.Done()
 }
 
 func (l *localMailBox) Example(args *ExampleArgs, reply *ExampleReply) error {
@@ -301,39 +305,23 @@ func (r *RPCMailBox) Serve() {
 }
 
 func (r *RPCMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
-	// should do rpc call
-	// declare an argument structure.
 	args := GetJobsArgs{ID: workerID}
-
-	// declare a reply structure.
 	reply := GetJobsReply{}
-
 	rpcName := "Coordinator.GetJobs"
 	if err := call(rpcName, &args, &reply); err != nil {
-		panic(err)
 		return nil, fmt.Errorf("failed on rpc call [%v]: %v", rpcName, err)
 	}
-	/*
-		jobs, err := r.coorService.GetJobs(workerID)
-		if err != nil {
-			return nil, fmt.Errorf("failed on l.coorService.GetJobs: %v", err)
-		}
-	*/
 	return reply.Jobs, nil
 }
 
 func (r *RPCMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
-	// FIXME: Should do rpc call
-	if err := r.coorService.FinishJob(workerID, jobID); err != nil {
-		return fmt.Errorf("failed on l.coorService.FinishJob: %v", err)
+	args := FinishJobsArgs{WorkerID: workerID, JobID: jobID}
+	reply := FinishJobsReply{}
+	rpcName := "Coordinator.FinishJob"
+	if err := call(rpcName, &args, &reply); err != nil {
+		return fmt.Errorf("failed on rpc call [%v]: %v", rpcName, err)
 	}
 	return nil
-}
-
-func (r *RPCMailBox) Done() bool {
-	// hang here forever
-	// TODO: Handle this done check
-	return r.coorService.Done()
 }
 
 func (r *RPCMailBox) Example(args *ExampleArgs, reply *ExampleReply) error {
