@@ -194,8 +194,9 @@ func (c *Coordinator) Done() bool {
 	return true
 }
 
-func (c *Coordinator) GetJobs(args GetJobsArgs, reply *GetJobsReply) error {
+func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
 	// TODO: Take batch of jobs from jobQueue
+	c.logCoordinator("c.GetJobs is called")
 	j, err := c.JobQueue.GetJob()
 	if err != nil {
 		reply.Jobs = nil
@@ -257,7 +258,7 @@ func (l *localMailBox) Serve() {
 }
 
 func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
-	args := GetJobsArgs{workerID}
+	args := &GetJobsArgs{workerID}
 	reply := &GetJobsReply{}
 	l.coorService.GetJobs(args, reply)
 	if reply.Err != nil {
@@ -309,6 +310,7 @@ func (r *RPCMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 
 	rpcName := "Coordinator.GetJobs"
 	if err := call(rpcName, &args, &reply); err != nil {
+		panic(err)
 		return nil, fmt.Errorf("failed on rpc call [%v]: %v", rpcName, err)
 	}
 	/*
@@ -321,6 +323,7 @@ func (r *RPCMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 }
 
 func (r *RPCMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
+	// FIXME: Should do rpc call
 	if err := r.coorService.FinishJob(workerID, jobID); err != nil {
 		return fmt.Errorf("failed on l.coorService.FinishJob: %v", err)
 	}

@@ -165,6 +165,8 @@ func (l *Worker) IsHealthy() bool { return true }
 func (l *Worker) Serve(ctx context.Context) error {
 	timer := time.NewTicker(300 * time.Millisecond)
 	errChan := make(chan error, 30)
+	l.logWorker("try to call CallExample")
+	CallExample()
 	for {
 		select {
 		case <-timer.C:
@@ -390,6 +392,7 @@ func call(rpcname string, args interface{}, reply interface{}) error {
 	}
 	defer c.Close()
 	if err := c.Call(rpcname, args, reply); err != nil {
+		panic(err)
 		return fmt.Errorf("failed on rpc.Client.Call: %v", err)
 	}
 	return nil
