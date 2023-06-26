@@ -353,8 +353,6 @@ func (l *Worker) readKeyValuesFromFile(fileName string) ([]KeyValue, error) {
 	return out.KVS, nil
 }
 
-func (l *Worker) Shutdown() { return }
-
 // example function to show how to make an RPC call to the coordinator.
 //
 // the RPC argument and reply types are defined in rpc.go.

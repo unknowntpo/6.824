@@ -9,9 +9,13 @@ package main
 // Please do not change this file.
 //
 
-import "6.824/mr"
-import "os"
-import "fmt"
+import (
+	"fmt"
+	"os"
+	"time"
+
+	"6.824/mr"
+)
 
 const nReduce = 10
 
@@ -29,6 +33,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "failed on m.WordCount: %v", err)
 		return
 	}
-	// FIXME: What does this do?
-	m.Wait()
+
+	for !m.Done() {
+		time.Sleep(500 * time.Millisecond)
+	}
 }

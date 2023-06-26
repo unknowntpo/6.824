@@ -73,9 +73,11 @@ var _ = Describe("LocalWorker", func() {
 		go localWorker.Serve(context.Background())
 	})
 
-	AfterEach(func() {
-		localWorker.Shutdown()
-	})
+	/*
+		AfterEach(func() {
+			localWorker.Shutdown()
+		})
+	*/
 
 	When("worker ask coordinator for jobs", func() {
 		var (
@@ -88,7 +90,9 @@ var _ = Describe("LocalWorker", func() {
 			reply = &mr.WordCountReply{}
 			err = coor.WordCount(req, reply)
 			Expect(err).ShouldNot(HaveOccurred())
-			coor.Wait()
+			for !coor.Done() {
+				time.Sleep(500 * time.Millisecond)
+			}
 		})
 		It("should return correct jobs", func() {
 			Expect(err).ShouldNot(HaveOccurred())

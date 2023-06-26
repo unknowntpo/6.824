@@ -12,23 +12,28 @@ import (
 )
 
 type Coordinator struct {
+
 	// Your definitions here.
 	JobQueue  *JobQueue
 	MailBox   CoorMailBox
 	workerMap *WorkerMap
-	nReduce   int
+	// Shouldn't be changed after init
+	nReduce int
 
 	mapJobWaitGroup    sync.WaitGroup
 	reduceJobWaitGroup sync.WaitGroup
 
-	Phase Phase
+	Phase   Phase
+	phaseMu sync.Mutex
 }
 
-type Phase int
+type Phase int32
 
 const (
-	PHASE_MAP Phase = iota
+	PHASE_INIT Phase = iota
+	PHASE_MAP
 	PHASE_REDUCE
+	PHASE_DONE
 )
 
 // WorkerMap stores every workers' jobs
@@ -139,7 +144,8 @@ func (c *Coordinator) FinishJob(args *FinishJobsArgs, reply *FinishJobsReply) er
 }
 
 func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) error {
-	c.Phase = PHASE_MAP
+	c.ChangePhase(PHASE_MAP)
+
 	log.Printf("in c.WordCount, args: %v\n", args)
 	mapJobs := make([]Job, 0, len(args.FileNames))
 
@@ -159,7 +165,7 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 
 	c.logCoordinator("all map jobs are done")
 
-	c.Phase = PHASE_REDUCE
+	c.ChangePhase(PHASE_REDUCE)
 
 	c.reduceJobWaitGroup.Add(c.nReduce)
 
@@ -177,9 +183,20 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 
 	c.WaitForReduce()
 
+	c.ChangePhase(PHASE_DONE)
+
 	c.logCoordinator("all jobs are done")
 
 	return nil
+}
+
+func (c *Coordinator) ChangePhase(desiredPhase Phase) {
+	c.phaseMu.Lock()
+	defer c.phaseMu.Unlock()
+	if c.Phase != desiredPhase-1 {
+		panic("broken state")
+	}
+	c.Phase = desiredPhase
 }
 
 func (c *Coordinator) WaitForReduce() {
@@ -195,10 +212,14 @@ func (c *Coordinator) Serve() {
 	c.MailBox.Serve()
 }
 
-// main/mrcoordinator.go calls Wait() to block until all jobs are finished.
-func (c *Coordinator) Wait() {
-	c.WaitForMap()
-	c.WaitForReduce()
+// main/mrcoordinator.go calls Done() periodically to see if all jobs are done.
+func (c *Coordinator) Done() bool {
+	succeed := !c.phaseMu.TryLock()
+	defer c.phaseMu.Unlock()
+	if !succeed {
+		return false
+	}
+	return c.Phase == PHASE_DONE
 }
 
 func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
