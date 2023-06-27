@@ -16,6 +16,7 @@ import (
 	"log"
 	"os"
 	"plugin"
+	"time"
 
 	"6.824/mr"
 	"6.824/utils"
@@ -31,9 +32,17 @@ func main() {
 
 	mapf, reducef := loadPlugin(os.Args[1])
 
-	localWorker := mr.NewWorker(&mr.RPCMailBox{}, mapf, reducef, nReduce, utils.GetWd())
+	localWorker := mr.NewWorker(
+		&mr.RPCMailBox{},
+		mapf,
+		reducef,
+		nReduce,
+		utils.GetWd(),
+	)
 	go localWorker.Serve(context.Background())
-	select {}
+	for !localWorker.Done() {
+		time.Sleep(500 * time.Millisecond)
+	}
 }
 
 // load the application Map and Reduce functions

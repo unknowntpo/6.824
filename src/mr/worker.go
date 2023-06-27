@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"sync/atomic"
 	"time"
 
 	uuid "github.com/google/uuid"
@@ -159,6 +160,7 @@ type Worker struct {
 	mapFn     MapFn
 	reduceFn  ReduceFn
 	workDir   string
+	done      atomic.Bool
 }
 
 func (l *Worker) IsHealthy() bool { return true }
@@ -172,7 +174,14 @@ func (l *Worker) Serve(ctx context.Context) error {
 		case <-timer.C:
 			jobs, err := l.coMailBox.GetJobs(l.ID)
 			if err != nil {
-				log.Println(err)
+				switch {
+				case err == ErrDone:
+					// All jobs are done, shutdown worker
+					l.complete()
+					return nil
+				default:
+					log.Println(err)
+				}
 			}
 			l.logWorker("got jobs: %v", debug(jobs))
 			go l.handleJobs(ctx, jobs, errChan)
@@ -182,6 +191,14 @@ func (l *Worker) Serve(ctx context.Context) error {
 			return nil
 		}
 	}
+}
+
+func (l *Worker) complete() {
+	l.done.Swap(true)
+}
+
+func (l *Worker) Done() bool {
+	return l.done.Load()
 }
 
 func (l *Worker) doReduce(j Job, kvs []KeyValue) error {

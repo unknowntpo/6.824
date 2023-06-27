@@ -2,6 +2,7 @@ package mr
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -222,7 +223,14 @@ func (c *Coordinator) Done() bool {
 	return c.Phase == PHASE_DONE
 }
 
+var (
+	ErrDone = errors.New("all jobs are done")
+)
+
 func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
+	if c.Done() {
+		return ErrDone
+	}
 	// TODO: Take batch of jobs from jobQueue
 	c.logCoordinator("c.GetJobs is called")
 	j, err := c.JobQueue.GetJob()
@@ -289,7 +297,12 @@ func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 	reply := &GetJobsReply{}
 	l.coorService.GetJobs(args, reply)
 	if reply.Err != nil {
-		return nil, fmt.Errorf("failed on l.coorService.GetJobs: %v", reply.Err)
+		switch {
+		case reply.Err == ErrDone:
+			return nil, reply.Err
+		default:
+			return nil, fmt.Errorf("failed on l.coorService.GetJobs: %v", reply.Err)
+		}
 	}
 	return reply.Jobs, nil
 }
@@ -330,7 +343,12 @@ func (r *RPCMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 	reply := GetJobsReply{}
 	rpcName := "Coordinator.GetJobs"
 	if err := call(rpcName, &args, &reply); err != nil {
-		return nil, fmt.Errorf("failed on rpc call [%v]: %v", rpcName, err)
+		switch {
+		case err == ErrDone:
+			return nil, err
+		default:
+			return nil, fmt.Errorf("failed on rpc call [%v]: %v", rpcName, err)
+		}
 	}
 	return reply.Jobs, nil
 }
