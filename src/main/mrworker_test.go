@@ -56,8 +56,9 @@ func getTestFileNames(workDir string) []string {
 
 var _ = Describe("LocalWorker", func() {
 	var (
-		localWorker *mr.Worker
-		coor        *mr.Coordinator
+		localWorker  *mr.Worker
+		localWorker2 *mr.Worker
+		coor         *mr.Coordinator
 		// FIXME: Should be full pg-*.txt file, or the answer will not be correct
 		fileNames []string
 		workDir   string
@@ -70,7 +71,9 @@ var _ = Describe("LocalWorker", func() {
 		coor = mr.NewLocalCoordinator(fileNames, nReduce)
 		fileNames = getTestFileNames(utils.GetWd())
 		localWorker = mr.NewWorker(coor.MailBox, Map, Reduce, nReduce, workDir)
+		localWorker2 = mr.NewWorker(coor.MailBox, Map, Reduce, nReduce, workDir)
 		go localWorker.Serve(context.Background())
+		go localWorker2.Serve(context.Background())
 	})
 
 	When("worker ask coordinator for jobs", func() {
@@ -87,8 +90,12 @@ var _ = Describe("LocalWorker", func() {
 			for !coor.Done() {
 				time.Sleep(500 * time.Millisecond)
 			}
+			fmt.Println("coor.Done is true")
 			for !localWorker.Done() {
-				time.Sleep(500 * time.Millisecond)
+				time.Sleep(100 * time.Millisecond)
+			}
+			for !localWorker2.Done() {
+				time.Sleep(100 * time.Millisecond)
 			}
 		})
 		It("should return correct jobs", func() {

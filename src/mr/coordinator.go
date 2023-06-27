@@ -223,6 +223,7 @@ func (c *Coordinator) Serve() {
 func (c *Coordinator) Done() bool {
 	c.phaseMu.Lock()
 	defer c.phaseMu.Unlock()
+	c.logCoordinator("c.Done is called, done %v", c.Phase == PHASE_DONE)
 	return c.Phase == PHASE_DONE
 }
 
@@ -236,8 +237,6 @@ func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
 		reply.Err = ErrDone
 		return ErrDone
 	}
-	// TODO: Take batch of jobs from jobQueue
-	c.logCoordinator("c.GetJobs is called")
 	j, err := c.JobQueue.GetJob()
 	if err != nil {
 		reply.Jobs = nil
@@ -300,6 +299,7 @@ func (l *localMailBox) Serve() {
 func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 	args := &GetJobsArgs{workerID}
 	reply := &GetJobsReply{}
+	defer l.coorService.logCoordinator("reply: %v", debug(reply))
 	l.coorService.GetJobs(args, reply)
 	if reply.Err != nil {
 		switch {
@@ -313,7 +313,7 @@ func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 }
 
 func (l *localMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
-	args := FinishJobsArgs{}
+	args := FinishJobsArgs{WorkerID: workerID, JobID: jobID}
 	reply := FinishJobsReply{}
 	if err := l.coorService.FinishJob(&args, &reply); err != nil {
 		return fmt.Errorf("failed on l.coorService.FinishJob: %v", err)

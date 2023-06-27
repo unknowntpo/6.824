@@ -171,7 +171,6 @@ func (l *Worker) Serve(ctx context.Context) error {
 	for {
 		select {
 		case <-timer.C:
-			l.logWorker("calling GetJobs")
 			jobs, err := l.coMailBox.GetJobs(l.ID)
 			if err != nil {
 				switch {
@@ -194,7 +193,7 @@ func (l *Worker) Serve(ctx context.Context) error {
 }
 
 func (l *Worker) complete() {
-	l.done.Swap(true)
+	l.done.CompareAndSwap(false, true)
 	l.logWorker("all jobs are done")
 }
 
@@ -210,8 +209,6 @@ func (l *Worker) doReduce(j Job, kvs []KeyValue) error {
 	if err != nil {
 		return fmt.Errorf("failed to open output file [%v]: %v", oname, err)
 	}
-
-	l.logWorker("writing ofile %v", ofile.Name())
 
 	sort.Sort(ByKey(kvs))
 
@@ -261,13 +258,11 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job, errChan chan error)
 			for keyIHash, kvs := range kvsMap {
 				// format: map-<ihash(j.filename)>-<keyIHash>
 				fileName := filepath.Join(l.workDir, getIntermediateFileName(j.FileName, keyIHash))
-				l.logWorker("writing file: %s", fileName)
 				if err := l.writeKeyValuesToFile(fileName, kvs); err != nil {
 					errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
 					return
 				}
 			}
-			l.logWorker("map job [%v] is done\n", debug(j))
 		case TYPE_REDUCE:
 			// Open mr-*-j.ReduceNum
 			// mr-1291122704-4
@@ -278,8 +273,6 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job, errChan chan error)
 			}
 
 			kvs := []KeyValue{}
-
-			l.logWorker("got fileNames: %v", fileNames)
 
 			for _, f := range fileNames {
 				_kvs, err := l.readKeyValuesFromFile(f)
