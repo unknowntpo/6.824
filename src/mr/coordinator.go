@@ -10,6 +10,7 @@ import (
 	"net/rpc"
 	"os"
 	"sync"
+	"time"
 )
 
 type Coordinator struct {
@@ -186,7 +187,12 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 
 	c.ChangePhase(PHASE_DONE)
 
+	c.logCoordinator("c.Phase: %v", c.Phase)
+
 	c.logCoordinator("all jobs are done")
+
+	// Wait for all worker to die
+	time.Sleep(2 * time.Second)
 
 	return nil
 }
@@ -215,11 +221,8 @@ func (c *Coordinator) Serve() {
 
 // main/mrcoordinator.go calls Done() periodically to see if all jobs are done.
 func (c *Coordinator) Done() bool {
-	succeed := !c.phaseMu.TryLock()
+	c.phaseMu.Lock()
 	defer c.phaseMu.Unlock()
-	if !succeed {
-		return false
-	}
 	return c.Phase == PHASE_DONE
 }
 
@@ -229,6 +232,8 @@ var (
 
 func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
 	if c.Done() {
+		c.logCoordinator("in coor: Jobs are done")
+		reply.Err = ErrDone
 		return ErrDone
 	}
 	// TODO: Take batch of jobs from jobQueue
@@ -344,8 +349,8 @@ func (r *RPCMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 	rpcName := "Coordinator.GetJobs"
 	if err := call(rpcName, &args, &reply); err != nil {
 		switch {
-		case err == ErrDone:
-			return nil, err
+		case reply.Err == ErrDone:
+			return nil, reply.Err
 		default:
 			return nil, fmt.Errorf("failed on rpc call [%v]: %v", rpcName, err)
 		}

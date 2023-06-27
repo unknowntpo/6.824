@@ -165,25 +165,25 @@ type Worker struct {
 
 func (l *Worker) IsHealthy() bool { return true }
 func (l *Worker) Serve(ctx context.Context) error {
-	timer := time.NewTicker(300 * time.Millisecond)
+	timer := time.NewTicker(10 * time.Millisecond)
 	errChan := make(chan error, 30)
-	l.logWorker("try to call CallExample")
 	CallExample()
 	for {
 		select {
 		case <-timer.C:
+			l.logWorker("calling GetJobs")
 			jobs, err := l.coMailBox.GetJobs(l.ID)
 			if err != nil {
 				switch {
 				case err == ErrDone:
 					// All jobs are done, shutdown worker
+					l.logWorker("worker receive ErrDone")
 					l.complete()
 					return nil
 				default:
 					log.Println(err)
 				}
 			}
-			l.logWorker("got jobs: %v", debug(jobs))
 			go l.handleJobs(ctx, jobs, errChan)
 		case err := <-errChan:
 			l.logWorker("%v", err)
@@ -195,6 +195,7 @@ func (l *Worker) Serve(ctx context.Context) error {
 
 func (l *Worker) complete() {
 	l.done.Swap(true)
+	l.logWorker("all jobs are done")
 }
 
 func (l *Worker) Done() bool {
@@ -202,7 +203,6 @@ func (l *Worker) Done() bool {
 }
 
 func (l *Worker) doReduce(j Job, kvs []KeyValue) error {
-	l.logWorker("in doReduce for job %v", debug(j))
 	oname := fmt.Sprintf("mr-out-%d", j.ReduceNum)
 	path := filepath.Join(l.workDir, oname)
 	ofile, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0644)
