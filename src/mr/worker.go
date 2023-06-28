@@ -172,6 +172,7 @@ func (l *Worker) Serve(ctx context.Context) error {
 		select {
 		case <-timer.C:
 			jobs, err := l.coMailBox.GetJobs(l.ID)
+			l.logWorker("get job is called, err: %v", err)
 			if err != nil {
 				switch {
 				case err == ErrDone:

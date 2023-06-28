@@ -25,8 +25,8 @@ type Coordinator struct {
 	mapJobWaitGroup    sync.WaitGroup
 	reduceJobWaitGroup sync.WaitGroup
 
-	Phase   Phase
-	phaseMu sync.Mutex
+	phase   Phase
+	phaseMu sync.RWMutex
 }
 
 type Phase int32
@@ -41,7 +41,7 @@ const (
 // WorkerMap stores every workers' jobs
 
 type WorkerMap struct {
-	mu sync.Mutex
+	mu sync.RWMutex
 	m  map[WorkerID]map[JobID]struct{}
 }
 
@@ -49,6 +49,19 @@ func NewWorkerMap() *WorkerMap {
 	m := &WorkerMap{}
 	m.m = map[WorkerID]map[JobID]struct{}{}
 	return m
+}
+
+func (w *WorkerMap) NumOfWorker() int {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	fmt.Println("num of worker", len(w.m))
+	return len(w.m)
+}
+
+func (w *WorkerMap) RemoveWorker(workerID WorkerID) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	delete(w.m, workerID)
 }
 
 func debug(i interface{}) string {
@@ -136,7 +149,7 @@ func (c *Coordinator) FinishJob(args *FinishJobsArgs, reply *FinishJobsReply) er
 		return fmt.Errorf("failed on Coordinator.FinishJob for workerID [%v], jobID: [%v]: %v", args.WorkerID, args.JobID, err)
 	}
 	// job type
-	switch c.Phase {
+	switch c.phase {
 	case PHASE_MAP:
 		c.mapJobWaitGroup.Done()
 	case PHASE_REDUCE:
@@ -187,12 +200,14 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 
 	c.ChangePhase(PHASE_DONE)
 
-	c.logCoordinator("c.Phase: %v", c.Phase)
+	c.logCoordinator("c.Phase: %v", c.phase)
 
 	c.logCoordinator("all jobs are done")
 
 	// Wait for all worker to die
-	time.Sleep(2 * time.Second)
+	for !c.Done() {
+		time.Sleep(100 * time.Millisecond)
+	}
 
 	return nil
 }
@@ -200,10 +215,10 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 func (c *Coordinator) ChangePhase(desiredPhase Phase) {
 	c.phaseMu.Lock()
 	defer c.phaseMu.Unlock()
-	if c.Phase != desiredPhase-1 {
+	if c.phase != desiredPhase-1 {
 		panic("broken state")
 	}
-	c.Phase = desiredPhase
+	c.phase = desiredPhase
 }
 
 func (c *Coordinator) WaitForReduce() {
@@ -219,12 +234,17 @@ func (c *Coordinator) Serve() {
 	c.MailBox.Serve()
 }
 
+func (c *Coordinator) PhaseIs(p Phase) bool {
+	c.phaseMu.RLock()
+	defer c.phaseMu.RUnlock()
+	return c.phase == p
+}
+
 // main/mrcoordinator.go calls Done() periodically to see if all jobs are done.
 func (c *Coordinator) Done() bool {
-	c.phaseMu.Lock()
-	defer c.phaseMu.Unlock()
-	c.logCoordinator("c.Done is called, done %v", c.Phase == PHASE_DONE)
-	return c.Phase == PHASE_DONE
+	c.phaseMu.RLock()
+	defer c.phaseMu.RUnlock()
+	return c.PhaseIs(PHASE_DONE) && c.workerMap.NumOfWorker() == 0
 }
 
 var (
@@ -232,8 +252,9 @@ var (
 )
 
 func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
-	if c.Done() {
+	if c.PhaseIs(PHASE_DONE) {
 		c.logCoordinator("in coor: Jobs are done")
+		c.workerMap.RemoveWorker(args.ID)
 		reply.Err = ErrDone
 		return ErrDone
 	}
