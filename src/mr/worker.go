@@ -112,6 +112,12 @@ func NewJob(fileName string, jobType JobType) Job {
 	return Job{ID: NewJobID(), FileName: fileName, JobType: jobType}
 }
 
+type ReqID string
+
+func NewReqID() ReqID {
+	return ReqID(uuid.Must(uuid.NewRandom()).String())
+}
+
 type WorkerID string
 
 func NewWorkerID() WorkerID {
@@ -163,16 +169,34 @@ type Worker struct {
 	done      atomic.Bool
 }
 
+func (l *Worker) HeartBeat() {
+	timer := time.NewTicker(1 * time.Second)
+	for range timer.C {
+		l.logWorker("heart is beating")
+	}
+}
+
 func (l *Worker) IsHealthy() bool { return true }
 func (l *Worker) Serve(ctx context.Context) error {
+	// go l.HeartBeat()
+	defer l.logWorker("worker Exit Serve")
+	heartBeatTimer := time.NewTicker(1 * time.Second)
+
+	deadTimer := time.NewTicker(3 * time.Second)
 	timer := time.NewTicker(10 * time.Millisecond)
 	errChan := make(chan error, 30)
-	CallExample()
 	for {
+		l.logWorker("loop in running")
 		select {
+		case <-heartBeatTimer.C:
+			l.logWorker("Beat it")
+			deadTimer.Reset(3 * time.Second)
+		case <-deadTimer.C:
+			panic("dead")
 		case <-timer.C:
+			l.logWorker("1")
+			l.logWorker("try to call get jobs")
 			jobs, err := l.coMailBox.GetJobs(l.ID)
-			l.logWorker("get job is called, err: %v", err)
 			if err != nil {
 				switch {
 				case err == ErrDone:
@@ -181,16 +205,23 @@ func (l *Worker) Serve(ctx context.Context) error {
 					l.complete()
 					return nil
 				default:
-					log.Println(err)
+					errChan <- err
 				}
 			}
-			go l.handleJobs(ctx, jobs, errChan)
+			if jobs == nil {
+				l.logWorker("no jobs")
+			}
+			if jobs != nil {
+				go l.handleJobs(ctx, jobs, errChan)
+			}
 		case err := <-errChan:
-			l.logWorker("%v", err)
+			l.logWorker("error chan got something %v", err)
 		case <-ctx.Done():
+			l.logWorker("ctx.Done")
 			return nil
 		}
 	}
+	return nil
 }
 
 func (l *Worker) complete() {
@@ -288,11 +319,11 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job, errChan chan error)
 				errChan <- fmt.Errorf("failed on l.doReduce for %v: %v", j, err)
 				return
 			}
-			l.logWorker("reduce job [%v] is done\n", debug(j))
 		}
 		if err := l.coMailBox.FinishJob(l.ID, j.ID); err != nil {
 			errChan <- fmt.Errorf("failed on l.coMailBox.FinishJob: %v", err)
 		}
+		l.logWorker("end of worker.handleJobs")
 	}
 }
 
@@ -318,8 +349,6 @@ func (l *Worker) getIntermediateFileNameByReduceNum(reduceNum int) ([]string, er
 			fileNames = append(fileNames, file.Name())
 		}
 	}
-
-	fmt.Println("files", fileNames)
 
 	return fileNames, nil
 }

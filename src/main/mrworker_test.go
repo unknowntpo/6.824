@@ -87,9 +87,11 @@ var _ = Describe("LocalWorker", func() {
 			reply = &mr.WordCountReply{}
 			err = coor.WordCount(req, reply)
 			Expect(err).ShouldNot(HaveOccurred())
-			for !coor.Done() {
-				time.Sleep(500 * time.Millisecond)
-			}
+			/*
+				for !coor.Done() {
+					time.Sleep(500 * time.Millisecond)
+				}
+			*/
 			fmt.Println("coor.Done is true")
 			for !localWorker.Done() {
 				time.Sleep(100 * time.Millisecond)

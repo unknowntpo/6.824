@@ -31,7 +31,7 @@ endif
 mr/test/unit: mr/build/seq
 	# we need to call mr/build/seq to build mr-out-correct first
 	# to make output of or worker implementation compare to it
-	go test -v ./main/mrworker.go ./main/mrworker_test.go $(FOCUSFLAG)
+	go test -v -race ./main/mrworker.go ./main/mrworker_test.go $(FOCUSFLAG)
 
 ## mr/build/plugin: build wc.so
 mr/build/plugin:

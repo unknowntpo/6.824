@@ -51,6 +51,11 @@ func NewWorkerMap() *WorkerMap {
 	return m
 }
 
+func (w *WorkerMap) NoLockNumOfWorker() int {
+	fmt.Println("num of worker", len(w.m))
+	return len(w.m)
+}
+
 func (w *WorkerMap) NumOfWorker() int {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
@@ -120,6 +125,10 @@ func NewLocalJobQueue(capacity int, coor *Coordinator) *JobQueue {
 	return &JobQueue{ch: make(chan Job, capacity), coor: coor}
 }
 
+func (j *JobQueue) Stop() {
+	close(j.ch)
+}
+
 func (j *JobQueue) Submit(job Job) error {
 	j.ch <- job
 	return nil
@@ -129,9 +138,11 @@ func (j *JobQueue) NumOfJobs() int {
 	return len(j.ch)
 }
 
-func (j *JobQueue) GetJob() (Job, error) {
-	job := <-j.ch
-	return job, nil
+func (j *JobQueue) GetJob() (Job, bool) {
+	fmt.Println("before JobQueue.GetJob")
+	job, ok := <-j.ch
+	fmt.Println("after JobQueue.GetJob: job", j)
+	return job, ok
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -145,6 +156,7 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 }
 
 func (c *Coordinator) FinishJob(args *FinishJobsArgs, reply *FinishJobsReply) error {
+	c.logCoordinator("FinishJob is called for workerID: %v, jobID: %v", args.WorkerID, args.JobID)
 	if err := c.workerMap.FinishJob(args.WorkerID, args.JobID); err != nil {
 		return fmt.Errorf("failed on Coordinator.FinishJob for workerID [%v], jobID: [%v]: %v", args.WorkerID, args.JobID, err)
 	}
@@ -180,6 +192,7 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 
 	c.logCoordinator("all map jobs are done")
 
+	c.logCoordinator("try to change phase")
 	c.ChangePhase(PHASE_REDUCE)
 
 	c.reduceJobWaitGroup.Add(c.nReduce)
@@ -200,12 +213,15 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 
 	c.ChangePhase(PHASE_DONE)
 
-	c.logCoordinator("c.Phase: %v", c.phase)
+	c.JobQueue.Stop()
 
 	c.logCoordinator("all jobs are done")
 
+	time.Sleep(3 * time.Second)
+
 	// Wait for all worker to die
 	for !c.Done() {
+		c.logCoordinator("in wordcount: not done")
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -240,10 +256,12 @@ func (c *Coordinator) PhaseIs(p Phase) bool {
 	return c.phase == p
 }
 
+func (c *Coordinator) NoLockPhaseIs(p Phase) bool {
+	return c.phase == p
+}
+
 // main/mrcoordinator.go calls Done() periodically to see if all jobs are done.
 func (c *Coordinator) Done() bool {
-	c.phaseMu.RLock()
-	defer c.phaseMu.RUnlock()
 	return c.PhaseIs(PHASE_DONE) && c.workerMap.NumOfWorker() == 0
 }
 
@@ -252,27 +270,40 @@ var (
 )
 
 func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
-	if c.PhaseIs(PHASE_DONE) {
-		c.logCoordinator("in coor: Jobs are done")
-		c.workerMap.RemoveWorker(args.ID)
-		reply.Err = ErrDone
-		return ErrDone
+	var (
+		j  Job
+		ok bool
+	)
+	c.logCoordinator("GetJobs is called for worker %v, req[%v]", args.WorkerID, args.ReqID)
+
+	isDonePhase := c.PhaseIs(PHASE_DONE)
+	if isDonePhase {
+		goto DONE
 	}
-	j, err := c.JobQueue.GetJob()
-	if err != nil {
+
+	c.logCoordinator("after isDonePhase check, worker %v, req[%v]", args.WorkerID, args.ReqID)
+
+	j, ok = c.JobQueue.GetJob()
+	c.logCoordinator("after c.JobQueue.GetJob, worker %v, req[%v], ok ? %v", args.WorkerID, args.ReqID, ok)
+	if !ok && c.PhaseIs(PHASE_DONE) {
+		goto DONE
+	}
+
+	c.logCoordinator("before c.workerMap.AddJob, worker %v, req[%v], ok ? %v", args.WorkerID, args.ReqID, ok)
+
+	// at here, we got our job, so Phase is not possible to be PHASE_DONE
+	if err := c.workerMap.AddJob(j, args.WorkerID); err != nil {
 		reply.Jobs = nil
-		reply.Err = fmt.Errorf("failed on c.JobQueue.GetJob: %v", err)
-		return reply.Err
+		return fmt.Errorf("failed on c.workerMap.AddJob: %v", err)
 	}
-	if err := c.workerMap.AddJob(j, args.ID); err != nil {
-		reply.Jobs = nil
-		reply.Err = fmt.Errorf("failed on c.workerMap.AddJob: %v", err)
-		return reply.Err
-	}
-	c.logCoordinator("c.workerMap: %v", debug(c.workerMap))
+
 	reply.Jobs = []Job{j}
-	reply.Err = nil
 	return nil
+
+DONE:
+	c.logCoordinator("in coor: Jobs are done")
+	c.workerMap.RemoveWorker(args.WorkerID)
+	return ErrDone
 }
 
 const DefaultJobQueueCap = 10
@@ -318,18 +349,26 @@ func (l *localMailBox) Serve() {
 }
 
 func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
-	args := &GetJobsArgs{workerID}
+	args := &GetJobsArgs{ReqID: NewReqID(), WorkerID: workerID}
 	reply := &GetJobsReply{}
-	defer l.coorService.logCoordinator("reply: %v", debug(reply))
-	l.coorService.GetJobs(args, reply)
-	if reply.Err != nil {
+	deadTimer := time.NewTicker(2 * time.Second)
+	go func() {
+		for range deadTimer.C {
+			panic(fmt.Sprintf("in localMailBox: WORKER[%v], req[%v] is dead", workerID, args.ReqID))
+		}
+	}()
+	defer deadTimer.Stop()
+	defer fmt.Println("end of localMailBox GetJobs")
+	l.coorService.logCoordinator("localMailBox try to call rpc GetJobs")
+	if err := l.coorService.GetJobs(args, reply); err != nil {
 		switch {
-		case reply.Err == ErrDone:
-			return nil, reply.Err
+		case err == ErrDone:
+			return nil, err
 		default:
-			return nil, fmt.Errorf("failed on l.coorService.GetJobs: %v", reply.Err)
+			return nil, fmt.Errorf("failed on l.coorService.GetJobs: %v", err)
 		}
 	}
+	fmt.Println("end of localWorker.GetJbos")
 	return reply.Jobs, nil
 }
 
@@ -365,13 +404,13 @@ func (r *RPCMailBox) Serve() {
 }
 
 func (r *RPCMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
-	args := GetJobsArgs{ID: workerID}
+	args := GetJobsArgs{WorkerID: workerID}
 	reply := GetJobsReply{}
 	rpcName := "Coordinator.GetJobs"
 	if err := call(rpcName, &args, &reply); err != nil {
 		switch {
-		case reply.Err == ErrDone:
-			return nil, reply.Err
+		case err == ErrDone:
+			return nil, err
 		default:
 			return nil, fmt.Errorf("failed on rpc call [%v]: %v", rpcName, err)
 		}
