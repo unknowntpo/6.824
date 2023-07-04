@@ -380,6 +380,8 @@ func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 		switch {
 		case err == ErrDone:
 			return nil, err
+		case err == ErrNoJob:
+			return nil, err
 		default:
 			return nil, fmt.Errorf("failed on l.coorService.GetJobs: %v", err)
 		}
@@ -426,6 +428,8 @@ func (r *RPCMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 		switch {
 		case err == ErrDone:
 			return nil, ErrDone
+		case err == ErrNoJob:
+			return nil, ErrNoJob
 		default:
 			return nil, fmt.Errorf("failed on rpc call [%v]: %v", rpcName, err)
 		}

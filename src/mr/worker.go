@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -183,8 +184,10 @@ func (l *Worker) Serve(ctx context.Context) error {
 	heartBeatTimer := time.NewTicker(1 * time.Second)
 
 	deadTimer := time.NewTicker(3 * time.Second)
-	timer := time.NewTicker(100 * time.Millisecond)
+	timer := time.NewTicker(1 * time.Millisecond)
 	errChan := make(chan error, 30)
+
+LOOP:
 	for {
 		select {
 		case <-heartBeatTimer.C:
@@ -196,15 +199,17 @@ func (l *Worker) Serve(ctx context.Context) error {
 			jobs, err := l.coMailBox.GetJobs(l.ID)
 			if err != nil {
 				switch {
-				case err == ErrDone:
+				case strings.Contains(err.Error(), ErrDone.Error()):
 					// All jobs are done, shutdown worker
 					l.logWorker("worker receive ErrDone")
 					l.complete()
 					return nil
-				case err == ErrNoJob:
+				case strings.Contains(err.Error(), ErrNoJob.Error()):
 					l.logWorker("no job")
+					goto LOOP
 				default:
 					errChan <- err
+					goto LOOP
 				}
 			}
 			if jobs == nil {
@@ -225,7 +230,7 @@ func (l *Worker) Serve(ctx context.Context) error {
 
 func (l *Worker) complete() {
 	l.done.CompareAndSwap(false, true)
-	l.logWorker("all jobs are done")
+	l.logWorker("all worker jobs are done")
 }
 
 func (l *Worker) Done() bool {
