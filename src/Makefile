@@ -12,6 +12,7 @@ mr/build/seq: mr/build/plugin
 	# Ref: https://pdos.csail.mit.edu/6.824/labs/lab-mr.html
 	-rm ./main/mr-out*
 	go run ./main/mrsequential.go wc.so ./main/pg*.txt
+	-rm -r $(TMP_DIR)
 	mkdir -p $(TMP_DIR)
 	cp mr-out-0 $(TMP_DIR)/mr-out-correct
 	more $(TMP_DIR)/mr-out-correct
