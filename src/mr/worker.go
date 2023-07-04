@@ -183,18 +183,15 @@ func (l *Worker) Serve(ctx context.Context) error {
 	heartBeatTimer := time.NewTicker(1 * time.Second)
 
 	deadTimer := time.NewTicker(3 * time.Second)
-	timer := time.NewTicker(10 * time.Millisecond)
+	timer := time.NewTicker(100 * time.Millisecond)
 	errChan := make(chan error, 30)
 	for {
-		l.logWorker("loop in running")
 		select {
 		case <-heartBeatTimer.C:
-			l.logWorker("Beat it")
 			deadTimer.Reset(3 * time.Second)
 		case <-deadTimer.C:
 			panic("dead")
 		case <-timer.C:
-			l.logWorker("1")
 			l.logWorker("try to call get jobs")
 			jobs, err := l.coMailBox.GetJobs(l.ID)
 			if err != nil {
@@ -204,6 +201,8 @@ func (l *Worker) Serve(ctx context.Context) error {
 					l.logWorker("worker receive ErrDone")
 					l.complete()
 					return nil
+				case err == ErrNoJob:
+					l.logWorker("no job")
 				default:
 					errChan <- err
 				}
@@ -429,10 +428,16 @@ func call(rpcname string, args interface{}, reply interface{}) error {
 		return fmt.Errorf("dialing: %v", err)
 	}
 	defer c.Close()
+
 	if err := c.Call(rpcname, args, reply); err != nil {
-		panic(err)
-		return fmt.Errorf("failed on rpc.Client.Call: %v", err)
+		switch {
+		case err == ErrDone:
+			return ErrDone
+		default:
+			return fmt.Errorf("failed on rpc.Client.Call: %v", err)
+		}
 	}
+
 	return nil
 }
 

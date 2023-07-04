@@ -32,6 +32,7 @@ type GetJobsReply struct {
 }
 
 type FinishJobsArgs struct {
+	ReqID    ReqID
 	WorkerID WorkerID
 	JobID    JobID
 }

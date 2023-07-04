@@ -138,11 +138,18 @@ func (j *JobQueue) NumOfJobs() int {
 	return len(j.ch)
 }
 
-func (j *JobQueue) GetJob() (Job, bool) {
+// return Job, and is chan opened or not
+func (j *JobQueue) GetJob() (Job, error) {
 	fmt.Println("before JobQueue.GetJob")
-	job, ok := <-j.ch
-	fmt.Println("after JobQueue.GetJob: job", j)
-	return job, ok
+	select {
+	case job, ok := <-j.ch:
+		if !ok {
+			return Job{}, ErrDone
+		}
+		return job, nil
+	default:
+		return Job{}, ErrNoJob
+	}
 }
 
 // Your code here -- RPC handlers for the worker to call.
@@ -222,6 +229,7 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 	// Wait for all worker to die
 	for !c.Done() {
 		c.logCoordinator("in wordcount: not done")
+		c.logCoordinator("workers num: %v", c.workerMap.NumOfWorker())
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -266,13 +274,14 @@ func (c *Coordinator) Done() bool {
 }
 
 var (
-	ErrDone = errors.New("all jobs are done")
+	ErrDone  = errors.New("all jobs are done")
+	ErrNoJob = errors.New("no job right now")
 )
 
 func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
 	var (
-		j  Job
-		ok bool
+		j   Job
+		err error
 	)
 	c.logCoordinator("GetJobs is called for worker %v, req[%v]", args.WorkerID, args.ReqID)
 
@@ -283,13 +292,21 @@ func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
 
 	c.logCoordinator("after isDonePhase check, worker %v, req[%v]", args.WorkerID, args.ReqID)
 
-	j, ok = c.JobQueue.GetJob()
-	c.logCoordinator("after c.JobQueue.GetJob, worker %v, req[%v], ok ? %v", args.WorkerID, args.ReqID, ok)
-	if !ok && c.PhaseIs(PHASE_DONE) {
-		goto DONE
+	j, err = c.JobQueue.GetJob()
+	if err != nil {
+		c.logCoordinator("after c.JobQueue.GetJob, worker %v, req[%v], err %v", args.WorkerID, args.ReqID, err)
+		switch {
+		case err == ErrDone:
+			goto DONE
+		case err == ErrNoJob:
+			reply.Jobs = []Job{}
+			return ErrNoJob
+		default:
+			return fmt.Errorf("failed on c.JobQueue.GetJob: %v", err)
+		}
 	}
 
-	c.logCoordinator("before c.workerMap.AddJob, worker %v, req[%v], ok ? %v", args.WorkerID, args.ReqID, ok)
+	c.logCoordinator("before c.workerMap.AddJob, worker %v, req[%v]", args.WorkerID, args.ReqID)
 
 	// at here, we got our job, so Phase is not possible to be PHASE_DONE
 	if err := c.workerMap.AddJob(j, args.WorkerID); err != nil {
@@ -350,13 +367,12 @@ func (l *localMailBox) Serve() {
 
 func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 	args := &GetJobsArgs{ReqID: NewReqID(), WorkerID: workerID}
+	fmt.Println("calling co.GetJobs for ", args.ReqID)
 	reply := &GetJobsReply{}
-	deadTimer := time.NewTicker(2 * time.Second)
-	go func() {
-		for range deadTimer.C {
-			panic(fmt.Sprintf("in localMailBox: WORKER[%v], req[%v] is dead", workerID, args.ReqID))
-		}
-	}()
+	deadTimer := time.AfterFunc(2*time.Second, func() {
+		panic(fmt.Sprintf("in localMailBox: WORKER[%v], req[%v] is dead", workerID, args.ReqID))
+	})
+
 	defer deadTimer.Stop()
 	defer fmt.Println("end of localMailBox GetJobs")
 	l.coorService.logCoordinator("localMailBox try to call rpc GetJobs")
@@ -368,15 +384,14 @@ func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 			return nil, fmt.Errorf("failed on l.coorService.GetJobs: %v", err)
 		}
 	}
-	fmt.Println("end of localWorker.GetJbos")
 	return reply.Jobs, nil
 }
 
 func (l *localMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
-	args := FinishJobsArgs{WorkerID: workerID, JobID: jobID}
+	args := FinishJobsArgs{WorkerID: workerID, JobID: jobID, ReqID: NewReqID()}
 	reply := FinishJobsReply{}
 	if err := l.coorService.FinishJob(&args, &reply); err != nil {
-		return fmt.Errorf("failed on l.coorService.FinishJob: %v", err)
+		return fmt.Errorf("failed on l.coorService.FinishJob with req[%v]: %v", args.ReqID, err)
 	}
 	return nil
 }
@@ -410,7 +425,7 @@ func (r *RPCMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 	if err := call(rpcName, &args, &reply); err != nil {
 		switch {
 		case err == ErrDone:
-			return nil, err
+			return nil, ErrDone
 		default:
 			return nil, fmt.Errorf("failed on rpc call [%v]: %v", rpcName, err)
 		}
