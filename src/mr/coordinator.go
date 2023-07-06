@@ -27,6 +27,10 @@ type Coordinator struct {
 
 	phase   Phase
 	phaseMu sync.RWMutex
+
+	// dead map
+	deadMapMu sync.Mutex
+	deadMap   map[WorkerID]bool
 }
 
 type Phase int32
@@ -42,18 +46,32 @@ const (
 
 type WorkerMap struct {
 	mu sync.RWMutex
-	m  map[WorkerID]map[JobID]struct{}
+	m  map[WorkerID]map[JobID]Job
 }
 
 func NewWorkerMap() *WorkerMap {
 	m := &WorkerMap{}
-	m.m = map[WorkerID]map[JobID]struct{}{}
+	m.m = map[WorkerID]map[JobID]Job{}
 	return m
 }
 
 func (w *WorkerMap) NoLockNumOfWorker() int {
 	fmt.Println("num of worker", len(w.m))
 	return len(w.m)
+}
+
+func (w *WorkerMap) GetJobsByWorkerID(workerID WorkerID) ([]Job, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	jobsMap, ok := w.m[workerID]
+	if !ok {
+		return nil, fmt.Errorf("worker [%v] does not exist")
+	}
+	jobs := make([]Job, len(jobsMap))
+	for _, j := range jobsMap {
+		jobs = append(jobs, j)
+	}
+	return jobs, nil
 }
 
 func (w *WorkerMap) NumOfWorker() int {
@@ -84,14 +102,14 @@ func (m *WorkerMap) AddJob(j Job, workerID WorkerID) error {
 	jobsForWorker, ok := m.m[workerID]
 	if !ok {
 		// it's new worker
-		jobsForWorker = map[JobID]struct{}{}
+		jobsForWorker = map[JobID]Job{}
 	}
 	_, ok = jobsForWorker[j.ID]
 	if ok {
 		return fmt.Errorf("job %v already exists", j.ID)
 	}
 	// Job Not Found
-	jobsForWorker[j.ID] = struct{}{}
+	jobsForWorker[j.ID] = j
 	m.m[workerID] = jobsForWorker
 	return nil
 }
@@ -99,9 +117,8 @@ func (m *WorkerMap) AddJob(j Job, workerID WorkerID) error {
 func (m *WorkerMap) FinishJob(workerID WorkerID, jobID JobID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	var jobs map[JobID]struct{}
-	var ok bool
-	if jobs, ok = m.m[workerID]; !ok {
+	jobs, ok := m.m[workerID]
+	if !ok {
 		return fmt.Errorf("worker not found")
 	}
 	if _, ok := jobs[jobID]; !ok {
@@ -127,6 +144,13 @@ func NewLocalJobQueue(capacity int, coor *Coordinator) *JobQueue {
 
 func (j *JobQueue) Stop() {
 	close(j.ch)
+}
+
+func (jq *JobQueue) BatchSubmit(jobs []Job) error {
+	for _, j := range jobs {
+		jq.ch <- j
+	}
+	return nil
 }
 
 func (j *JobQueue) Submit(job Job) error {
@@ -256,6 +280,58 @@ func (c *Coordinator) WaitForMap() {
 // start a thread that listens for RPCs from worker.go
 func (c *Coordinator) Serve() {
 	c.MailBox.Serve()
+	// FIXME: use waitgroup for graceful shutdown and avoid goroutine leak
+	go c.monitor()
+}
+
+func (c *Coordinator) monitor() {
+	ticker := time.NewTicker(1 * time.Second)
+	for {
+		if c.PhaseIs(PHASE_DONE) {
+			return
+		}
+		select {
+		case <-ticker.C:
+			if err := c.checkWorkerAliveness(); err != nil {
+				c.logCoordinator("in monitor, failed on c.checkWorkerAliveness: %v", err)
+			}
+		}
+	}
+}
+
+// FIXME: separate check and requeue
+// checkWorkerAliveness checks liveness of worker and set it back to dead again,
+// if worker in dead map is dead, re-queue work to c.JobQueue
+// set dead == true for worker in dead map
+func (c *Coordinator) checkWorkerAliveness() error {
+	c.deadMapMu.Lock()
+	defer c.deadMapMu.Unlock()
+	errSlice := []error{}
+	for workerID, isDead := range c.deadMap {
+		if isDead {
+			// get all job of that worker in c.workerMap, ressign them to jobQueue
+			jobs, err := c.workerMap.GetJobsByWorkerID(workerID)
+			if err != nil {
+				errSlice = append(errSlice, fmt.Errorf("failed on c.workerMap.GetJobsByWorkerID for worker[%v]: %v", workerID, err))
+			}
+			c.workerMap.RemoveWorker(workerID)
+			if err := c.JobQueue.BatchSubmit(jobs); err != nil {
+				errSlice = append(errSlice, fmt.Errorf("failed on c.JobQueue.BatchSubmit for worker[%v]: %v", workerID, err))
+			}
+		} else {
+			// alive, set isDead to true again, wait for worker to call
+			c.deadMap[workerID] = true
+			// set it back to false
+		}
+	}
+	if len(errSlice) == 0 {
+		var err error
+		for _, e := range errSlice {
+			err = fmt.Errorf(fmt.Sprintf("%v ", e.Error()))
+		}
+		return err
+	}
+	return nil
 }
 
 func (c *Coordinator) PhaseIs(p Phase) bool {
@@ -333,6 +409,7 @@ func NewLocalCoordinator(files []string, nReduce int) *Coordinator {
 	c.workerMap = NewWorkerMap()
 	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap, c)
 	c.nReduce = nReduce
+	c.deadMap = map[WorkerID]bool{}
 	c.Serve()
 	return c
 }
@@ -347,6 +424,7 @@ func NewRPCCoordinator(files []string, nReduce int) *Coordinator {
 	c.workerMap = NewWorkerMap()
 	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap, c)
 	c.nReduce = nReduce
+	c.deadMap = map[WorkerID]bool{}
 	return c
 }
 
@@ -369,11 +447,13 @@ func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 	args := &GetJobsArgs{ReqID: NewReqID(), WorkerID: workerID}
 	fmt.Println("calling co.GetJobs for ", args.ReqID)
 	reply := &GetJobsReply{}
-	deadTimer := time.AfterFunc(2*time.Second, func() {
-		panic(fmt.Sprintf("in localMailBox: WORKER[%v], req[%v] is dead", workerID, args.ReqID))
-	})
+	/*
+		deadTimer := time.AfterFunc(2*time.Second, func() {
+			panic(fmt.Sprintf("in localMailBox: WORKER[%v], req[%v] is dead", workerID, args.ReqID))
+		})
+	*/
 
-	defer deadTimer.Stop()
+	//	defer deadTimer.Stop()
 	defer fmt.Println("end of localMailBox GetJobs")
 	l.coorService.logCoordinator("localMailBox try to call rpc GetJobs")
 	if err := l.coorService.GetJobs(args, reply); err != nil {
@@ -442,7 +522,13 @@ func (r *RPCMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
 	reply := FinishJobsReply{}
 	rpcName := "Coordinator.FinishJob"
 	if err := call(rpcName, &args, &reply); err != nil {
-		return fmt.Errorf("failed on rpc call [%v]: %v", rpcName, err)
+		switch {
+		case err == ErrDone:
+			return ErrDone
+		default:
+			return fmt.Errorf("failed on rpc call [%v]: %v", rpcName, err)
+		}
+
 	}
 	return nil
 }

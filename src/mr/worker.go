@@ -183,7 +183,7 @@ func (l *Worker) Serve(ctx context.Context) error {
 	defer l.logWorker("worker Exit Serve")
 	heartBeatTimer := time.NewTicker(1 * time.Second)
 
-	deadTimer := time.NewTicker(3 * time.Second)
+	//	deadTimer := time.NewTicker(6 * time.Second)
 	timer := time.NewTicker(1 * time.Microsecond)
 	errChan := make(chan error, 30)
 
@@ -191,9 +191,9 @@ LOOP:
 	for {
 		select {
 		case <-heartBeatTimer.C:
-			deadTimer.Reset(3 * time.Second)
-		case <-deadTimer.C:
-			panic("dead")
+			// deadTimer.Reset(6 * time.Second)
+			//		case <-deadTimer.C:
+			//			panic("dead")
 		case <-timer.C:
 			l.logWorker("try to call get jobs")
 			jobs, err := l.coMailBox.GetJobs(l.ID)
@@ -202,8 +202,7 @@ LOOP:
 				case strings.Contains(err.Error(), ErrDone.Error()):
 					// All jobs are done, shutdown worker
 					l.logWorker("worker receive ErrDone")
-					l.complete()
-					return nil
+					goto DONE
 				case strings.Contains(err.Error(), ErrNoJob.Error()):
 					l.logWorker("no job")
 					goto LOOP
@@ -217,8 +216,13 @@ LOOP:
 			}
 			if jobs != nil {
 				if err := l.handleJobs(ctx, jobs); err != nil {
-					l.logWorker("%v", err)
-					goto LOOP
+					switch {
+					case err == ErrDone:
+						goto DONE
+					default:
+						l.logWorker("%v", err)
+						goto LOOP
+					}
 				}
 			}
 		case err := <-errChan:
@@ -228,6 +232,9 @@ LOOP:
 			return nil
 		}
 	}
+
+DONE:
+	l.complete()
 	return nil
 }
 
@@ -277,10 +284,6 @@ func (l *Worker) doReduce(j Job, kvs []KeyValue) error {
 	return nil
 }
 
-func (l *Worker) handleJobsNoConcurrent(ctx context.Context, jobs []Job) error {
-	return l.handleJobs(ctx, jobs)
-}
-
 func (l *Worker) handleJobs(ctx context.Context, jobs []Job) error {
 	for _, j := range jobs {
 		switch j.JobType {
@@ -327,7 +330,12 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job) error {
 			}
 		}
 		if err := l.coMailBox.FinishJob(l.ID, j.ID); err != nil {
-			return fmt.Errorf("failed on l.coMailBox.FinishJob: %v", err)
+			switch {
+			case strings.Contains(err.Error(), ErrDone.Error()):
+				return ErrDone
+			default:
+				return fmt.Errorf("failed on l.coMailBox.FinishJob: %v", err)
+			}
 		}
 		l.logWorker("end of worker.handleJobs")
 	}
@@ -426,17 +434,49 @@ func CallExample() {
 	}
 }
 
+const RETRY_COUNT = 10
+
+func dialWithRetry(retryCnt int) (*rpc.Client, error) {
+	sockname := coordinatorSock()
+	for {
+		c, err := rpc.DialHTTP("unix", sockname)
+		defer func() {
+			if c != nil {
+				c.Close()
+			}
+		}()
+		if err != nil {
+			switch {
+			case strings.Contains(err.Error(), "connection refused"):
+				if retryCnt > 0 {
+					time.Sleep(10 * time.Millisecond)
+					retryCnt--
+					continue
+				} else {
+					// Treat it as done
+					return nil, ErrDone
+				}
+			default:
+				return nil, fmt.Errorf("dialing: %v", err)
+			}
+		}
+		return c, nil
+	}
+}
+
 // send an RPC request to the coordinator, wait for the response.
 // usually returns true.
 // returns false if something goes wrong.
 func call(rpcname string, args interface{}, reply interface{}) error {
-	sockname := coordinatorSock()
-	c, err := rpc.DialHTTP("unix", sockname)
+	c, err := dialWithRetry(RETRY_COUNT)
 	if err != nil {
-		return fmt.Errorf("dialing: %v", err)
+		switch {
+		case err == ErrDone:
+			return ErrDone
+		default:
+			return fmt.Errorf("failed on dialWithRetry: %v", err)
+		}
 	}
-	defer c.Close()
-
 	if err := c.Call(rpcname, args, reply); err != nil {
 		switch {
 		case err == ErrDone:
