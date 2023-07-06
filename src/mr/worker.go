@@ -184,7 +184,7 @@ func (l *Worker) Serve(ctx context.Context) error {
 	heartBeatTimer := time.NewTicker(1 * time.Second)
 
 	deadTimer := time.NewTicker(3 * time.Second)
-	timer := time.NewTicker(1 * time.Millisecond)
+	timer := time.NewTicker(1 * time.Microsecond)
 	errChan := make(chan error, 30)
 
 LOOP:
@@ -216,7 +216,10 @@ LOOP:
 				l.logWorker("no jobs")
 			}
 			if jobs != nil {
-				go l.handleJobs(ctx, jobs, errChan)
+				if err := l.handleJobs(ctx, jobs); err != nil {
+					l.logWorker("%v", err)
+					goto LOOP
+				}
 			}
 		case err := <-errChan:
 			l.logWorker("error chan got something %v", err)
@@ -274,15 +277,18 @@ func (l *Worker) doReduce(j Job, kvs []KeyValue) error {
 	return nil
 }
 
-func (l *Worker) handleJobs(ctx context.Context, jobs []Job, errChan chan error) {
+func (l *Worker) handleJobsNoConcurrent(ctx context.Context, jobs []Job) error {
+	return l.handleJobs(ctx, jobs)
+}
+
+func (l *Worker) handleJobs(ctx context.Context, jobs []Job) error {
 	for _, j := range jobs {
 		switch j.JobType {
 		case TYPE_MAP:
 			b, err := ioutil.ReadFile(j.FileName)
 			if err != nil {
 				// FIXME: multiple errors ?
-				errChan <- fmt.Errorf("failed to read file [%v]: %v", j.FileName, err)
-				return
+				return fmt.Errorf("failed to read file [%v]: %v", j.FileName, err)
 			}
 
 			kvs := l.mapFn(j.FileName, string(b))
@@ -295,8 +301,7 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job, errChan chan error)
 				// format: map-<ihash(j.filename)>-<keyIHash>
 				fileName := filepath.Join(l.workDir, getIntermediateFileName(j.FileName, keyIHash))
 				if err := l.writeKeyValuesToFile(fileName, kvs); err != nil {
-					errChan <- fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
-					return
+					return fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
 				}
 			}
 		case TYPE_REDUCE:
@@ -304,8 +309,7 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job, errChan chan error)
 			// mr-1291122704-4
 			fileNames, err := l.getIntermediateFileNameByReduceNum(j.ReduceNum)
 			if err != nil {
-				errChan <- fmt.Errorf("failed on getIntermediateFileNameByReduceNum[%v]: %v", j.ReduceNum, err)
-				return
+				return fmt.Errorf("failed on getIntermediateFileNameByReduceNum[%v]: %v", j.ReduceNum, err)
 			}
 
 			kvs := []KeyValue{}
@@ -313,22 +317,21 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job, errChan chan error)
 			for _, f := range fileNames {
 				_kvs, err := l.readKeyValuesFromFile(f)
 				if err != nil {
-					errChan <- fmt.Errorf("failed on readKeyValuesFromFile for %v: %v", f, err)
-					return
+					return fmt.Errorf("failed on readKeyValuesFromFile for %v: %v", f, err)
 				}
 				kvs = append(kvs, _kvs...)
 			}
 
 			if err := l.doReduce(j, kvs); err != nil {
-				errChan <- fmt.Errorf("failed on l.doReduce for %v: %v", j, err)
-				return
+				return fmt.Errorf("failed on l.doReduce for %v: %v", j, err)
 			}
 		}
 		if err := l.coMailBox.FinishJob(l.ID, j.ID); err != nil {
-			errChan <- fmt.Errorf("failed on l.coMailBox.FinishJob: %v", err)
+			return fmt.Errorf("failed on l.coMailBox.FinishJob: %v", err)
 		}
 		l.logWorker("end of worker.handleJobs")
 	}
+	return nil
 }
 
 func (l *Worker) getIntermediateFileNameByReduceNum(reduceNum int) ([]string, error) {
