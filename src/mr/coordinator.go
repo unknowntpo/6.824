@@ -30,7 +30,15 @@ type Coordinator struct {
 
 	// dead map
 	deadMapMu sync.Mutex
-	deadMap   map[WorkerID]bool
+	deadMap   deadMap
+}
+
+type deadMap map[WorkerID]bool
+
+func (m deadMap) MarkHealthy(workerID WorkerID) error {
+	// false means not dead
+	m[workerID] = false
+	return nil
 }
 
 type Phase int32
@@ -186,6 +194,16 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	return nil
 }
 
+func (c *Coordinator) MarkHealthy(args *MarkHealthyArgs, reply *MarkHealthyReply) error {
+	c.logCoordinator("MarkHealthy is called for workerID: %v, ReqID: %v", args.WorkerID, args.ReqID)
+	c.deadMapMu.Lock()
+	defer c.deadMapMu.Unlock()
+	if err := c.deadMap.MarkHealthy(args.WorkerID); err != nil {
+		return fmt.Errorf("failed on c.deadMap.MarkHealthy: %v", err)
+	}
+	return nil
+}
+
 func (c *Coordinator) FinishJob(args *FinishJobsArgs, reply *FinishJobsReply) error {
 	c.logCoordinator("FinishJob is called for workerID: %v, jobID: %v", args.WorkerID, args.JobID)
 	if err := c.workerMap.FinishJob(args.WorkerID, args.JobID); err != nil {
@@ -307,8 +325,10 @@ func (c *Coordinator) checkWorkerAliveness() error {
 	c.deadMapMu.Lock()
 	defer c.deadMapMu.Unlock()
 	errSlice := []error{}
+	c.logCoordinator("checkWorkerAliveness")
 	for workerID, isDead := range c.deadMap {
 		if isDead {
+			c.logCoordinator("worker[%v] is dead", workerID)
 			// get all job of that worker in c.workerMap, ressign them to jobQueue
 			jobs, err := c.workerMap.GetJobsByWorkerID(workerID)
 			if err != nil {
@@ -324,7 +344,7 @@ func (c *Coordinator) checkWorkerAliveness() error {
 			// set it back to false
 		}
 	}
-	if len(errSlice) == 0 {
+	if len(errSlice) != 0 {
 		var err error
 		for _, e := range errSlice {
 			err = fmt.Errorf(fmt.Sprintf("%v ", e.Error()))
@@ -390,6 +410,8 @@ func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
 		return fmt.Errorf("failed on c.workerMap.AddJob: %v", err)
 	}
 
+	c.logCoordinator("job is added worker %v, req[%v]", args.WorkerID, args.ReqID)
+
 	reply.Jobs = []Job{j}
 	return nil
 
@@ -432,6 +454,7 @@ type CoorMailBox interface {
 	Serve()
 	GetJobs(id WorkerID) ([]Job, error)
 	FinishJob(workerID WorkerID, jobID JobID) error
+	MarkHealthy(id WorkerID) error
 	Example(args *ExampleArgs, reply *ExampleReply) error
 }
 
@@ -478,6 +501,13 @@ func (l *localMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
 	return nil
 }
 
+func (l *localMailBox) MarkHealthy(workerID WorkerID) error {
+	if err := l.coorService.MailBox.MarkHealthy(workerID); err != nil {
+		return fmt.Errorf("failed on l.coorService.MarkHealthy: %v", err)
+	}
+	return nil
+}
+
 func (l *localMailBox) Example(args *ExampleArgs, reply *ExampleReply) error {
 	reply.Y = args.X + 1
 	return nil
@@ -501,10 +531,11 @@ func (r *RPCMailBox) Serve() {
 }
 
 func (r *RPCMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
-	args := GetJobsArgs{WorkerID: workerID}
+	args := GetJobsArgs{WorkerID: workerID, ReqID: NewReqID()}
 	reply := GetJobsReply{}
 	rpcName := "Coordinator.GetJobs"
-	if err := call(rpcName, &args, &reply); err != nil {
+	//	if err := callWithRetry(rpcName, &args, &reply); err != nil {
+	if err := callWithRetry(rpcName, &args, &reply); err != nil {
 		switch {
 		case err == ErrDone:
 			return nil, ErrDone
@@ -518,22 +549,36 @@ func (r *RPCMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 }
 
 func (r *RPCMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
-	args := FinishJobsArgs{WorkerID: workerID, JobID: jobID}
+	args := FinishJobsArgs{WorkerID: workerID, JobID: jobID, ReqID: NewReqID()}
 	reply := FinishJobsReply{}
 	rpcName := "Coordinator.FinishJob"
-	if err := call(rpcName, &args, &reply); err != nil {
+	if err := callWithRetry(rpcName, &args, &reply); err != nil {
 		switch {
 		case err == ErrDone:
 			return ErrDone
 		default:
 			return fmt.Errorf("failed on rpc call [%v]: %v", rpcName, err)
 		}
-
 	}
 	return nil
 }
 
 func (r *RPCMailBox) Example(args *ExampleArgs, reply *ExampleReply) error {
 	reply.Y = args.X + 1
+	return nil
+}
+
+func (r *RPCMailBox) MarkHealthy(workerID WorkerID) error {
+	rpcName := "Coordinator.MarkHealthy"
+	args := MarkHealthyArgs{WorkerID: workerID, ReqID: NewReqID()}
+	reply := MarkHealthyReply{}
+	if err := callWithRetry(rpcName, &args, &reply); err != nil {
+		switch {
+		case err == ErrDone:
+			return ErrDone
+		default:
+			return fmt.Errorf("failed on rpc call [%v]: %v", rpcName, err)
+		}
+	}
 	return nil
 }

@@ -40,6 +40,14 @@ type FinishJobsArgs struct {
 type FinishJobsReply struct {
 }
 
+type MarkHealthyArgs struct {
+	ReqID    ReqID
+	WorkerID WorkerID
+}
+
+type MarkHealthyReply struct {
+}
+
 // Add your RPC definitions here.
 type WordCountArgs struct {
 	X         int
