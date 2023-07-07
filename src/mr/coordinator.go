@@ -41,6 +41,11 @@ func (m deadMap) MarkHealthy(workerID WorkerID) error {
 	return nil
 }
 
+func (m deadMap) RemoveWorker(workerID WorkerID) error {
+	delete(m, workerID)
+	return nil
+}
+
 type Phase int32
 
 const (
@@ -136,7 +141,7 @@ func (m *WorkerMap) FinishJob(workerID WorkerID, jobID JobID) error {
 }
 
 func (c *Coordinator) logCoordinator(format string, args ...interface{}) {
-	// log.Printf("Coordinator[]\t"+format, args...)
+	log.Printf("Coordinator[]\t"+format, args...)
 }
 
 type JobQueue struct {
@@ -195,9 +200,11 @@ func (c *Coordinator) MarkHealthy(args *MarkHealthyArgs, reply *MarkHealthyReply
 	c.logCoordinator("MarkHealthy is called for workerID: %v, ReqID: %v", args.WorkerID, args.ReqID)
 	c.deadMapMu.Lock()
 	defer c.deadMapMu.Unlock()
+	c.logCoordinator("got deadMap lock")
 	if err := c.deadMap.MarkHealthy(args.WorkerID); err != nil {
 		return fmt.Errorf("failed on c.deadMap.MarkHealthy: %v", err)
 	}
+	c.logCoordinator("healthy is marked: %v", debug(c.deadMap))
 	return nil
 }
 
@@ -331,6 +338,7 @@ func (c *Coordinator) checkWorkerAliveness() error {
 				errSlice = append(errSlice, fmt.Errorf("failed on c.workerMap.GetJobsByWorkerID for worker[%v]: %v", workerID, err))
 			}
 			c.workerMap.RemoveWorker(workerID)
+			c.deadMap.RemoveWorker(workerID)
 			if err := c.JobQueue.BatchSubmit(jobs); err != nil {
 				errSlice = append(errSlice, fmt.Errorf("failed on c.JobQueue.BatchSubmit for worker[%v]: %v", workerID, err))
 			}
@@ -340,6 +348,7 @@ func (c *Coordinator) checkWorkerAliveness() error {
 			// set it back to false
 		}
 	}
+	c.logCoordinator("liveness: %v", c.deadMap)
 	if len(errSlice) != 0 {
 		var err error
 		for _, e := range errSlice {
@@ -368,6 +377,7 @@ func (c *Coordinator) Done() bool {
 var (
 	ErrDone  = errors.New("all jobs are done")
 	ErrNoJob = errors.New("no job right now")
+	ErrConn  = errors.New("connection error")
 )
 
 func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
@@ -414,6 +424,7 @@ func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
 DONE:
 	c.logCoordinator("in coor: Jobs are done")
 	c.workerMap.RemoveWorker(args.WorkerID)
+	c.deadMap.RemoveWorker(args.WorkerID)
 	return ErrDone
 }
 
@@ -559,6 +570,7 @@ func (r *RPCMailBox) MarkHealthy(workerID WorkerID) error {
 	rpcName := "Coordinator.MarkHealthy"
 	args := MarkHealthyArgs{WorkerID: workerID, ReqID: NewReqID()}
 	reply := MarkHealthyReply{}
+	fmt.Printf("RPCMailBox: calling MarkHealthy for worker[%v], req:[%v]\n", workerID, args.ReqID)
 	if err := callWithRetry(rpcName, &args, &reply); err != nil {
 		switch {
 		case err == ErrDone:

@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
-	// "log"
+	"log"
 	"net/rpc"
 	"os"
 	"path/filepath"
@@ -417,32 +417,6 @@ func (l *Worker) readKeyValuesFromFile(fileName string) ([]KeyValue, error) {
 	return out.KVS, nil
 }
 
-// example function to show how to make an RPC call to the coordinator.
-//
-// the RPC argument and reply types are defined in rpc.go.
-func CallExample() {
-
-	// declare an argument structure.
-	args := ExampleArgs{}
-
-	// fill in the argument(s).
-	args.X = 99
-
-	// declare a reply structure.
-	reply := ExampleReply{}
-
-	// send the RPC request, wait for the reply.
-	// the "Coordinator.Example" tells the
-	// receiving server that we'd like to call
-	// the Example() method of struct Coordinator.
-	if err := call("Coordinator.Example", &args, &reply); err != nil {
-		// reply.Y should be 100.
-		fmt.Printf("call failed!\n")
-	} else {
-		fmt.Printf(" reply.Y: %v\n", reply.Y)
-	}
-}
-
 const RETRY_COUNT = 10
 
 func dialWithRetry(retryCnt int) (*rpc.Client, error) {
@@ -450,15 +424,18 @@ func dialWithRetry(retryCnt int) (*rpc.Client, error) {
 	for {
 		c, err := rpc.DialHTTP("unix", sockname)
 		defer func() {
-			if c != nil {
+			if err != nil && c != nil {
 				c.Close()
 			}
 		}()
 		if err != nil {
+			isConnErr := strings.Contains(err.Error(), "connection refused") &&
+				strings.Contains(err.Error(), rpc.ErrShutdown.Error())
 			switch {
-			case strings.Contains(err.Error(), "connection refused"):
+			case isConnErr:
+				fmt.Println("isConnErr")
 				if retryCnt > 0 {
-					time.Sleep(10 * time.Millisecond)
+					time.Sleep(50 * time.Millisecond)
 					retryCnt--
 					continue
 				} else {
@@ -475,23 +452,32 @@ func dialWithRetry(retryCnt int) (*rpc.Client, error) {
 
 func callWithRetry(rpcname string, args interface{}, reply interface{}) error {
 	retryCnt := 10
+	c, err := dialWithRetry(retryCnt)
+	if err != nil {
+		switch {
+		case err == ErrDone:
+			return ErrDone
+		default:
+			return fmt.Errorf("dialing: %v", err)
+		}
+	}
 	for {
-		if err := call(rpcname, args, reply); err != nil {
-			isConnErr := strings.Contains(err.Error(), "connection refused") &&
-				strings.Contains(err.Error(), rpc.ErrShutdown.Error())
+		if err := call(c, rpcname, args, reply); err != nil {
 			switch {
-			case isConnErr:
+			case err == ErrConn:
 				if retryCnt > 0 {
-					//time.Sleep(10 * time.Millisecond)
-					time.Sleep(1 * time.Second)
+					time.Sleep(50 * time.Millisecond)
+					//time.Sleep(1 * time.Second)
 					retryCnt--
 					continue
 				} else {
 					// Treat it as done
 					return ErrDone
 				}
-			case strings.Contains(err.Error(), ErrNoJob.Error()):
+			case err == ErrNoJob:
 				return ErrNoJob
+			case err == ErrDone:
+				return ErrDone
 			default:
 				return fmt.Errorf("dialing: %v", err)
 			}
@@ -504,15 +490,14 @@ func callWithRetry(rpcname string, args interface{}, reply interface{}) error {
 // send an RPC request to the coordinator, wait for the response.
 // usually returns true.
 // returns false if something goes wrong.
-func call(rpcname string, args interface{}, reply interface{}) error {
-	sockname := coordinatorSock()
-	c, err := rpc.DialHTTP("unix", sockname)
-	defer c.Close()
-	if err != nil {
-		return fmt.Errorf("dialing: %v", err)
-	}
+func call(c *rpc.Client, rpcname string, args interface{}, reply interface{}) error {
 	if err := c.Call(rpcname, args, reply); err != nil {
+		isConnErr := strings.Contains(err.Error(), "connection refused") ||
+			strings.Contains(err.Error(), rpc.ErrShutdown.Error())
+		fmt.Println("incall, err", err)
 		switch {
+		case isConnErr:
+			return ErrConn
 		case err == ErrDone:
 			return ErrDone
 		case err == ErrNoJob:
@@ -525,5 +510,5 @@ func call(rpcname string, args interface{}, reply interface{}) error {
 }
 
 func (l *Worker) logWorker(format string, args ...interface{}) {
-	// log.Printf(fmt.Sprintf("WORKER[%v]\t", l.ID)+format, args...)
+	log.Printf(fmt.Sprintf("WORKER[%v]\t", l.ID)+format, args...)
 }
