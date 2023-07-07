@@ -64,7 +64,6 @@ func NewWorkerMap() *WorkerMap {
 }
 
 func (w *WorkerMap) NoLockNumOfWorker() int {
-	fmt.Println("num of worker", len(w.m))
 	return len(w.m)
 }
 
@@ -85,7 +84,6 @@ func (w *WorkerMap) GetJobsByWorkerID(workerID WorkerID) ([]Job, error) {
 func (w *WorkerMap) NumOfWorker() int {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
-	fmt.Println("num of worker", len(w.m))
 	return len(w.m)
 }
 
@@ -138,7 +136,7 @@ func (m *WorkerMap) FinishJob(workerID WorkerID, jobID JobID) error {
 }
 
 func (c *Coordinator) logCoordinator(format string, args ...interface{}) {
-	log.Printf("Coordinator[]\t"+format, args...)
+	// log.Printf("Coordinator[]\t"+format, args...)
 }
 
 type JobQueue struct {
@@ -172,7 +170,6 @@ func (j *JobQueue) NumOfJobs() int {
 
 // return Job, and is chan opened or not
 func (j *JobQueue) GetJob() (Job, error) {
-	fmt.Println("before JobQueue.GetJob")
 	select {
 	case job, ok := <-j.ch:
 		if !ok {
@@ -222,7 +219,6 @@ func (c *Coordinator) FinishJob(args *FinishJobsArgs, reply *FinishJobsReply) er
 func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) error {
 	c.ChangePhase(PHASE_MAP)
 
-	log.Printf("in c.WordCount, args: %v\n", args)
 	mapJobs := make([]Job, 0, len(args.FileNames))
 
 	c.mapJobWaitGroup.Add(len(args.FileNames))
@@ -468,16 +464,7 @@ func (l *localMailBox) Serve() {
 
 func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 	args := &GetJobsArgs{ReqID: NewReqID(), WorkerID: workerID}
-	fmt.Println("calling co.GetJobs for ", args.ReqID)
 	reply := &GetJobsReply{}
-	/*
-		deadTimer := time.AfterFunc(2*time.Second, func() {
-			panic(fmt.Sprintf("in localMailBox: WORKER[%v], req[%v] is dead", workerID, args.ReqID))
-		})
-	*/
-
-	//	defer deadTimer.Stop()
-	defer fmt.Println("end of localMailBox GetJobs")
 	l.coorService.logCoordinator("localMailBox try to call rpc GetJobs")
 	if err := l.coorService.GetJobs(args, reply); err != nil {
 		switch {

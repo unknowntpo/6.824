@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
-	"log"
+	// "log"
 	"net/rpc"
 	"os"
 	"path/filepath"
@@ -222,7 +222,6 @@ LOOP:
 			if jobs == nil {
 				l.logWorker("no jobs")
 			}
-			fmt.Println("YYY worker got job:", jobs)
 			if jobs != nil {
 				if err := l.handleJobs(ctx, jobs); err != nil {
 					switch {
@@ -485,7 +484,6 @@ func callWithRetry(rpcname string, args interface{}, reply interface{}) error {
 				if retryCnt > 0 {
 					//time.Sleep(10 * time.Millisecond)
 					time.Sleep(1 * time.Second)
-					fmt.Println("retry cont:", retryCnt)
 					retryCnt--
 					continue
 				} else {
@@ -493,7 +491,6 @@ func callWithRetry(rpcname string, args interface{}, reply interface{}) error {
 					return ErrDone
 				}
 			case strings.Contains(err.Error(), ErrNoJob.Error()):
-				fmt.Println("in cntains noJob")
 				return ErrNoJob
 			default:
 				return fmt.Errorf("dialing: %v", err)
@@ -514,7 +511,6 @@ func call(rpcname string, args interface{}, reply interface{}) error {
 	if err != nil {
 		return fmt.Errorf("dialing: %v", err)
 	}
-	fmt.Println("AAA in call for %, call once for ", rpcname, args)
 	if err := c.Call(rpcname, args, reply); err != nil {
 		switch {
 		case err == ErrDone:
@@ -529,5 +525,5 @@ func call(rpcname string, args interface{}, reply interface{}) error {
 }
 
 func (l *Worker) logWorker(format string, args ...interface{}) {
-	log.Printf(fmt.Sprintf("WORKER[%v]\t", l.ID)+format, args...)
+	// log.Printf(fmt.Sprintf("WORKER[%v]\t", l.ID)+format, args...)
 }
