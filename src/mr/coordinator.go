@@ -29,20 +29,48 @@ type Coordinator struct {
 	phaseMu sync.RWMutex
 
 	// dead map
-	deadMapMu sync.Mutex
-	deadMap   deadMap
+	deadMap deadMap
+
+	jobEventCh chan JobEvent
+	healthCh   chan HealthEvent
 }
 
-type deadMap map[WorkerID]bool
+type deadMap struct {
+	mu sync.RWMutex
+	m  map[WorkerID]bool
+}
 
-func (m deadMap) MarkHealthy(workerID WorkerID) error {
+func (dm *deadMap) String() string {
+	dm.mu.RLock()
+	defer dm.mu.RUnlock()
+	return debug(dm.m)
+}
+
+func (dm *deadMap) MarkHealthy(workerID WorkerID) error {
+	return dm.markWorkerStatus(workerID, false)
+}
+
+func (dm *deadMap) markWorkerStatus(workerID WorkerID, isDead bool) error {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
 	// false means not dead
-	m[workerID] = false
+	if _, ok := dm.m[workerID]; !ok {
+		// worker is already dead
+		return ErrWorkerDoesNotExist
+	}
+	dm.m[workerID] = isDead
 	return nil
 }
 
-func (m deadMap) RemoveWorker(workerID WorkerID) error {
-	delete(m, workerID)
+func (dm *deadMap) RemoveWorkerNoLock(workerID WorkerID) error {
+	delete(dm.m, workerID)
+	return nil
+}
+
+func (dm *deadMap) RemoveWorker(workerID WorkerID) error {
+	dm.mu.Lock()
+	defer dm.mu.Unlock()
+	delete(dm.m, workerID)
 	return nil
 }
 
@@ -66,6 +94,12 @@ func NewWorkerMap() *WorkerMap {
 	m := &WorkerMap{}
 	m.m = map[WorkerID]map[JobID]Job{}
 	return m
+}
+
+func (w *WorkerMap) String() string {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	return debug(w.m)
 }
 
 func (w *WorkerMap) NoLockNumOfWorker() int {
@@ -104,6 +138,12 @@ func debug(i interface{}) string {
 		panic(err)
 	}
 	return string(b)
+}
+
+func must(err error) {
+	if err != nil {
+		panic(err)
+	}
 }
 
 // AddJob add job to specific worker.
@@ -198,13 +238,10 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 
 func (c *Coordinator) MarkHealthy(args *MarkHealthyArgs, reply *MarkHealthyReply) error {
 	c.logCoordinator("MarkHealthy is called for workerID: %v, ReqID: %v", args.WorkerID, args.ReqID)
-	c.deadMapMu.Lock()
-	defer c.deadMapMu.Unlock()
-	c.logCoordinator("got deadMap lock")
 	if err := c.deadMap.MarkHealthy(args.WorkerID); err != nil {
 		return fmt.Errorf("failed on c.deadMap.MarkHealthy: %v", err)
 	}
-	c.logCoordinator("healthy is marked: %v", debug(c.deadMap))
+	c.logCoordinator("healthy is marked: %v", c.deadMap.String())
 	return nil
 }
 
@@ -220,6 +257,155 @@ func (c *Coordinator) FinishJob(args *FinishJobsArgs, reply *FinishJobsReply) er
 	case PHASE_REDUCE:
 		c.reduceJobWaitGroup.Done()
 	}
+	return nil
+}
+
+func (c *Coordinator) NewWordCount(args *WordCountArgs, reply *WordCountReply) error {
+	mapJobs := make([]Job, 0, len(args.FileNames))
+	reduceJobs := make([]Job, 0, c.nReduce)
+	for _, fileName := range args.FileNames {
+		job := NewJob(fileName, TYPE_MAP)
+		mapJobs = append(mapJobs, job)
+	}
+	for reduceNum := 0; reduceNum < c.nReduce; reduceNum++ {
+		j := Job{
+			ID:        NewJobID(),
+			JobType:   TYPE_REDUCE,
+			ReduceNum: reduceNum,
+		}
+		reduceJobs = append(reduceJobs, j)
+	}
+	must(c.doMapReduce(mapJobs, reduceJobs))
+	return nil
+}
+
+func (c *Coordinator) doMapReduce(mapJobs []Job, reduceJobs []Job) error {
+	c.ChangePhase(PHASE_MAP)
+	c.mapJobWaitGroup.Add(len(mapJobs))
+	for _, j := range mapJobs {
+		if err := c.JobQueue.Submit(j); err != nil {
+			return err
+		}
+	}
+	c.schedule(mapJobs, PHASE_MAP)
+
+	c.ChangePhase(PHASE_REDUCE)
+
+	c.reduceJobWaitGroup.Add(c.nReduce)
+
+	for _, j := range reduceJobs {
+		if err := c.JobQueue.Submit(j); err != nil {
+			return err
+		}
+	}
+
+	c.schedule(reduceJobs, PHASE_REDUCE)
+
+	c.ChangePhase(PHASE_DONE)
+
+	c.JobQueue.Stop()
+
+	return nil
+}
+
+func (c *Coordinator) schedule(jobs []Job, phase Phase) error {
+	for {
+		select {
+		case ev, closed := <-c.jobEventCh:
+			if closed {
+				goto END
+			}
+			c.handleJobEvent(ev)
+		case ev := <-c.healthCh:
+			c.handleHealthCheck(ev)
+		}
+	}
+
+END:
+	switch phase {
+	case PHASE_MAP:
+		c.WaitForMap()
+	case PHASE_REDUCE:
+		c.WaitForReduce()
+	}
+
+	return nil
+}
+
+type HealthEvent struct {
+}
+
+func (c *Coordinator) handleHealthCheck(ev HealthEvent) {
+	c.logCoordinator("handleHealthCheck is called")
+	return
+}
+
+type JobEvent struct {
+	ID       int
+	typ      EventType
+	workerID WorkerID
+	req      any
+	respCh   chan any
+	// TODO: Resp Channel to send resp to req handling goroutine
+}
+
+type EventType int
+
+const (
+	EVENT_GETJOB EventType = iota
+	EVENT_FINISHJOB
+)
+
+func (c *Coordinator) handleJobEvent(ev JobEvent) error {
+	switch ev.typ {
+	case EVENT_GETJOB:
+		var (
+			j     Job
+			err   error
+			reply GetJobsReply
+		)
+
+		req, ok := ev.req.(GetJobsArgs)
+		if !ok {
+			ev.respCh <- ErrInternal
+			return fmt.Errorf("wrong type on req, got %T, want %T", req, GetJobsArgs{})
+		}
+
+		j, err = c.JobQueue.GetJob()
+		if err != nil {
+			// c.logCoordinator("after c.JobQueue.GetJob, worker %v, req[%v], err %v", args.WorkerID, args.ReqID, err)
+			switch {
+			//			case err == ErrDone:
+			//				goto DONE
+			case err == ErrNoJob:
+				// c.logCoordinator("workerMap: %v", c.workerMap.String())
+				reply = GetJobsReply{}
+				reply.Err = ErrNoJob
+				ev.respCh <- reply
+				return nil
+			default:
+				reply.Err = ErrInternal
+				ev.respCh <- reply
+				return fmt.Errorf("failed on c.JobQueue.GetJob: %v", err)
+			}
+		}
+
+		// at here, we got our job, so Phase is not possible to be PHASE_DONE
+		if err := c.workerMap.AddJob(j, req.WorkerID); err != nil {
+			reply.Err = ErrInternal
+			ev.respCh <- reply
+			return fmt.Errorf("failed on c.workerMap.AddJob: %v", err)
+		}
+
+		// c.logCoordinator("job is added worker %v, req[%v]", args.WorkerID, args.ReqID)
+		reply.Jobs = []Job{j}
+		ev.respCh <- reply
+		return nil
+	case EVENT_FINISHJOB:
+	default:
+		panic("unknown event")
+	}
+
 	return nil
 }
 
@@ -325,37 +511,37 @@ func (c *Coordinator) monitor() {
 // if worker in dead map is dead, re-queue work to c.JobQueue
 // set dead == true for worker in dead map
 func (c *Coordinator) checkWorkerAliveness() error {
-	c.deadMapMu.Lock()
-	defer c.deadMapMu.Unlock()
-	errSlice := []error{}
-	c.logCoordinator("checkWorkerAliveness")
-	for workerID, isDead := range c.deadMap {
-		if isDead {
-			c.logCoordinator("worker[%v] is dead", workerID)
-			// get all job of that worker in c.workerMap, ressign them to jobQueue
-			jobs, err := c.workerMap.GetJobsByWorkerID(workerID)
-			if err != nil {
-				errSlice = append(errSlice, fmt.Errorf("failed on c.workerMap.GetJobsByWorkerID for worker[%v]: %v", workerID, err))
+	/*
+		errSlice := []error{}
+		c.logCoordinator("checkWorkerAliveness")
+		for workerID, isDead := range c.deadMap {
+			if isDead {
+				c.logCoordinator("worker[%v] is dead", workerID)
+				// get all job of that worker in c.workerMap, ressign them to jobQueue
+				jobs, err := c.workerMap.GetJobsByWorkerID(workerID)
+				if err != nil {
+					errSlice = append(errSlice, fmt.Errorf("failed on c.workerMap.GetJobsByWorkerID for worker[%v]: %v", workerID, err))
+				}
+				c.workerMap.RemoveWorker(workerID)
+				c.deadMap.RemoveWorker(workerID)
+				if err := c.JobQueue.BatchSubmit(jobs); err != nil {
+					errSlice = append(errSlice, fmt.Errorf("failed on c.JobQueue.BatchSubmit for worker[%v]: %v", workerID, err))
+				}
+			} else {
+				// alive, set isDead to true again, wait for worker to call
+				c.deadMap[workerID] = true
+				// set it back to false
 			}
-			c.workerMap.RemoveWorker(workerID)
-			c.deadMap.RemoveWorker(workerID)
-			if err := c.JobQueue.BatchSubmit(jobs); err != nil {
-				errSlice = append(errSlice, fmt.Errorf("failed on c.JobQueue.BatchSubmit for worker[%v]: %v", workerID, err))
+		}
+		c.logCoordinator("liveness: %v", c.deadMap)
+		if len(errSlice) != 0 {
+			var err error
+			for _, e := range errSlice {
+				err = fmt.Errorf(fmt.Sprintf("%v ", e.Error()))
 			}
-		} else {
-			// alive, set isDead to true again, wait for worker to call
-			c.deadMap[workerID] = true
-			// set it back to false
+			return err
 		}
-	}
-	c.logCoordinator("liveness: %v", c.deadMap)
-	if len(errSlice) != 0 {
-		var err error
-		for _, e := range errSlice {
-			err = fmt.Errorf(fmt.Sprintf("%v ", e.Error()))
-		}
-		return err
-	}
+	*/
 	return nil
 }
 
@@ -375,9 +561,11 @@ func (c *Coordinator) Done() bool {
 }
 
 var (
-	ErrDone  = errors.New("all jobs are done")
-	ErrNoJob = errors.New("no job right now")
-	ErrConn  = errors.New("connection error")
+	ErrDone               = errors.New("all jobs are done")
+	ErrNoJob              = errors.New("no job right now")
+	ErrInternal           = errors.New("internal server error")
+	ErrWorkerDoesNotExist = errors.New("worker doesn't exist")
+	ErrConn               = errors.New("connection error")
 )
 
 func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
@@ -402,6 +590,7 @@ func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
 			goto DONE
 		case err == ErrNoJob:
 			reply.Jobs = []Job{}
+			c.logCoordinator("workerMap: %v", c.workerMap.String())
 			return ErrNoJob
 		default:
 			return fmt.Errorf("failed on c.JobQueue.GetJob: %v", err)
@@ -438,7 +627,7 @@ func NewLocalCoordinator(files []string, nReduce int) *Coordinator {
 	c.workerMap = NewWorkerMap()
 	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap, c)
 	c.nReduce = nReduce
-	c.deadMap = map[WorkerID]bool{}
+	// c.deadMap = map[WorkerID]bool{}
 	c.Serve()
 	return c
 }
@@ -453,7 +642,7 @@ func NewRPCCoordinator(files []string, nReduce int) *Coordinator {
 	c.workerMap = NewWorkerMap()
 	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap, c)
 	c.nReduce = nReduce
-	c.deadMap = map[WorkerID]bool{}
+	//	c.deadMap = map[WorkerID]bool{}
 	return c
 }
 
@@ -500,7 +689,9 @@ func (l *localMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
 }
 
 func (l *localMailBox) MarkHealthy(workerID WorkerID) error {
-	if err := l.coorService.MailBox.MarkHealthy(workerID); err != nil {
+	args := MarkHealthyArgs{}
+	reply := MarkHealthyReply{}
+	if err := l.coorService.MarkHealthy(&args, &reply); err != nil {
 		return fmt.Errorf("failed on l.coorService.MarkHealthy: %v", err)
 	}
 	return nil

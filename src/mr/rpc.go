@@ -29,6 +29,7 @@ type GetJobsArgs struct {
 
 type GetJobsReply struct {
 	Jobs []Job
+	Err  error
 }
 
 type FinishJobsArgs struct {

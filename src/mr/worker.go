@@ -213,6 +213,7 @@ LOOP:
 					goto DONE
 				case strings.Contains(err.Error(), ErrNoJob.Error()):
 					l.logWorker("no job")
+					time.Sleep(500 * time.Millisecond)
 					goto LOOP
 				default:
 					errChan <- err
