@@ -1,6 +1,7 @@
 package mr
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -295,34 +296,38 @@ func (c *Coordinator) doMapReduce(mapJobs []Job, reduceJobs []Job) error {
 
 	c.ChangePhase(PHASE_DONE)
 
-	c.JobQueue.Stop()
+	c.logCoordinator("all jobs are done")
+
+	//c.JobQueue.Stop()
 
 	return nil
 }
 
 func (c *Coordinator) schedule(jobs []Job, phase Phase) error {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		switch phase {
+		case PHASE_MAP:
+			c.mapJobWaitGroup.Wait()
+		case PHASE_REDUCE:
+			c.reduceJobWaitGroup.Wait()
+		}
+		cancel()
+	}()
 	for {
 		select {
 		case ev, ok := <-c.jobEventCh:
 			if !ok {
-				goto END
+				return nil
 			}
 			c.logCoordinator("before handleJobEvent")
 			c.handleJobEvent(ev)
 		case ev := <-c.healthCh:
 			c.handleHealthCheck(ev)
+		case <-ctx.Done():
+			return nil
 		}
 	}
-
-END:
-	switch phase {
-	case PHASE_MAP:
-		c.WaitForMap()
-	case PHASE_REDUCE:
-		c.WaitForReduce()
-	}
-
-	return nil
 }
 
 type HealthEvent struct {
@@ -392,6 +397,12 @@ func (c *Coordinator) handleJobEvent(ev JobEvent) error {
 			err   error
 			reply GetJobsReply
 		)
+
+		if c.PhaseIs(PHASE_DONE) {
+			reply.Err = ErrDone
+			ev.RespCh <- reply
+			return nil
+		}
 
 		req, ok := ev.Req.(GetJobsArgs)
 		if !ok {
