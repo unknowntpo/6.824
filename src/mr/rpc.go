@@ -51,6 +51,14 @@ type MarkHealthyReply struct {
 	Err error
 }
 
+type CheckHealthyArgs struct {
+	ReqID ReqID
+}
+
+type CheckHealthyReply struct {
+	Err error
+}
+
 // Add your RPC definitions here.
 type WordCountArgs struct {
 	X         int

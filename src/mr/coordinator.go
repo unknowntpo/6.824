@@ -35,42 +35,28 @@ type Coordinator struct {
 	healthCh   chan HealthEvent
 }
 
-type deadMap struct {
-	mu sync.RWMutex
-	m  map[WorkerID]bool
-}
+type deadMap map[WorkerID]bool
 
 func (dm *deadMap) String() string {
-	dm.mu.RLock()
-	defer dm.mu.RUnlock()
-	return debug(dm.m)
+	return debug(dm)
 }
 
 func (dm *deadMap) MarkHealthy(workerID WorkerID) error {
 	return dm.markWorkerStatus(workerID, false)
 }
 
-func (dm *deadMap) markWorkerStatus(workerID WorkerID, isDead bool) error {
-	dm.mu.Lock()
-	defer dm.mu.Unlock()
+func (dm deadMap) markWorkerStatus(workerID WorkerID, isDead bool) error {
 	// false means not dead
-	if _, ok := dm.m[workerID]; !ok {
+	if _, ok := dm[workerID]; !ok {
 		// worker is already dead
 		return ErrWorkerDoesNotExist
 	}
-	dm.m[workerID] = isDead
+	dm[workerID] = isDead
 	return nil
 }
 
-func (dm *deadMap) RemoveWorkerNoLock(workerID WorkerID) error {
-	delete(dm.m, workerID)
-	return nil
-}
-
-func (dm *deadMap) RemoveWorker(workerID WorkerID) error {
-	dm.mu.Lock()
-	defer dm.mu.Unlock()
-	delete(dm.m, workerID)
+func (dm deadMap) RemoveWorker(workerID WorkerID) error {
+	delete(dm, workerID)
 	return nil
 }
 
@@ -366,6 +352,13 @@ func (c *Coordinator) handleHealthCheck(ev HealthEvent) error {
 		ev.RespCh <- reply
 		return nil
 	case EVENT_CHECK_HEALTHY:
+		//args := CheckHealthyArgs{}
+		reply := CheckHealthyReply{}
+		if err := c.syncWorkerAliveness(); err != nil {
+			reply.Err = ErrInternal
+			ev.RespCh <- reply
+			return fmt.Errorf("failed on c.checkWorkerAliveness: %v", err)
+		}
 	default:
 		panic("unexpected event type")
 	}
@@ -561,49 +554,46 @@ func (c *Coordinator) monitor() {
 		select {
 		case <-ticker.C:
 			// create checkWorkerAliveness event
-			if err := c.checkWorkerAliveness(); err != nil {
+			if err := c.syncWorkerAliveness(); err != nil {
 				c.logCoordinator("in monitor, failed on c.checkWorkerAliveness: %v", err)
 			}
 		}
 	}
 }
 
-// FIXME: separate check and requeue
-// checkWorkerAliveness checks liveness of worker and set it back to dead again,
+// syncWorkerAliveness checks liveness of worker and set it back to dead again,
 // if worker in dead map is dead, re-queue work to c.JobQueue
 // set dead == true for worker in dead map
-func (c *Coordinator) checkWorkerAliveness() error {
-	/*
-		errSlice := []error{}
-		c.logCoordinator("checkWorkerAliveness")
-		for workerID, isDead := range c.deadMap {
-			if isDead {
-				c.logCoordinator("worker[%v] is dead", workerID)
-				// get all job of that worker in c.workerMap, ressign them to jobQueue
-				jobs, err := c.workerMap.GetJobsByWorkerID(workerID)
-				if err != nil {
-					errSlice = append(errSlice, fmt.Errorf("failed on c.workerMap.GetJobsByWorkerID for worker[%v]: %v", workerID, err))
-				}
-				c.workerMap.RemoveWorker(workerID)
-				c.deadMap.RemoveWorker(workerID)
-				if err := c.JobQueue.BatchSubmit(jobs); err != nil {
-					errSlice = append(errSlice, fmt.Errorf("failed on c.JobQueue.BatchSubmit for worker[%v]: %v", workerID, err))
-				}
-			} else {
-				// alive, set isDead to true again, wait for worker to call
-				c.deadMap[workerID] = true
-				// set it back to false
+func (c *Coordinator) syncWorkerAliveness() error {
+	errSlice := []error{}
+	c.logCoordinator("checkWorkerAliveness")
+	for workerID, isDead := range c.deadMap {
+		if isDead {
+			c.logCoordinator("worker[%v] is dead", workerID)
+			// get all job of that worker in c.workerMap, ressign them to jobQueue
+			jobs, err := c.workerMap.GetJobsByWorkerID(workerID)
+			if err != nil {
+				errSlice = append(errSlice, fmt.Errorf("failed on c.workerMap.GetJobsByWorkerID for worker[%v]: %v", workerID, err))
 			}
-		}
-		c.logCoordinator("liveness: %v", c.deadMap)
-		if len(errSlice) != 0 {
-			var err error
-			for _, e := range errSlice {
-				err = fmt.Errorf(fmt.Sprintf("%v ", e.Error()))
+			c.workerMap.RemoveWorker(workerID)
+			c.deadMap.RemoveWorker(workerID)
+			if err := c.JobQueue.BatchSubmit(jobs); err != nil {
+				errSlice = append(errSlice, fmt.Errorf("failed on c.JobQueue.BatchSubmit for worker[%v]: %v", workerID, err))
 			}
-			return err
+		} else {
+			// alive, set isDead to true again, wait for worker to call
+			c.deadMap[workerID] = true
+			// set it back to false
 		}
-	*/
+	}
+	c.logCoordinator("liveness: %v", c.deadMap)
+	if len(errSlice) != 0 {
+		var err error
+		for _, e := range errSlice {
+			err = fmt.Errorf(fmt.Sprintf("%v ", e.Error()))
+		}
+		return err
+	}
 	return nil
 }
 
