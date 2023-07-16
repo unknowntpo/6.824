@@ -39,6 +39,7 @@ type FinishJobsArgs struct {
 }
 
 type FinishJobsReply struct {
+	Err error
 }
 
 type MarkHealthyArgs struct {

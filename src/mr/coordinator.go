@@ -246,17 +246,16 @@ func (c *Coordinator) MarkHealthy(args *MarkHealthyArgs, reply *MarkHealthyReply
 }
 
 func (c *Coordinator) FinishJob(args *FinishJobsArgs, reply *FinishJobsReply) error {
-	c.logCoordinator("FinishJob is called for workerID: %v, jobID: %v", args.WorkerID, args.JobID)
-	if err := c.workerMap.FinishJob(args.WorkerID, args.JobID); err != nil {
-		return fmt.Errorf("failed on Coordinator.FinishJob for workerID [%v], jobID: [%v]: %v", args.WorkerID, args.JobID, err)
+	ev := JobEvent{
+		ID:       args.ReqID,
+		Type:     EVENT_FINISHJOB,
+		workerID: args.WorkerID,
+		Req:      *args,
+		RespCh:   make(chan any),
 	}
-	// job type
-	switch c.phase {
-	case PHASE_MAP:
-		c.mapJobWaitGroup.Done()
-	case PHASE_REDUCE:
-		c.reduceJobWaitGroup.Done()
-	}
+	c.jobEventCh <- ev
+	resp := <-ev.RespCh
+	*reply = resp.(FinishJobsReply)
 	return nil
 }
 
@@ -407,6 +406,28 @@ func (c *Coordinator) handleJobEvent(ev JobEvent) error {
 		ev.RespCh <- reply
 		return nil
 	case EVENT_FINISHJOB:
+		reply := FinishJobsReply{}
+		req, ok := ev.Req.(FinishJobsArgs)
+		if !ok {
+			reply.Err = ErrInternal
+			ev.RespCh <- reply
+			return fmt.Errorf("wrong type on req, got %T, want %T", req, FinishJobsArgs{})
+		}
+
+		if err := c.workerMap.FinishJob(req.WorkerID, req.JobID); err != nil {
+			reply.Err = ErrInternal
+			ev.RespCh <- reply
+			return fmt.Errorf("failed on Coordinator.FinishJob for workerID [%v], jobID: [%v]: %v", req.WorkerID, req.JobID, err)
+		}
+		// job type
+		switch c.phase {
+		case PHASE_MAP:
+			c.mapJobWaitGroup.Done()
+		case PHASE_REDUCE:
+			c.reduceJobWaitGroup.Done()
+		}
+		ev.RespCh <- reply
+		return nil
 	default:
 		panic("unknown event")
 	}
