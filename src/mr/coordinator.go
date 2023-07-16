@@ -238,16 +238,23 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 
 func (c *Coordinator) MarkHealthy(args *MarkHealthyArgs, reply *MarkHealthyReply) error {
 	c.logCoordinator("MarkHealthy is called for workerID: %v, ReqID: %v", args.WorkerID, args.ReqID)
-	if err := c.deadMap.MarkHealthy(args.WorkerID); err != nil {
-		return fmt.Errorf("failed on c.deadMap.MarkHealthy: %v", err)
+	ev := HealthEvent{
+		ReqID:    args.ReqID,
+		Type:     EVENT_MARK_HEALTHY,
+		WorkerID: args.WorkerID,
+		Req:      *args,
+		RespCh:   make(chan any),
 	}
+	c.healthCh <- ev
+	resp := <-ev.RespCh
+	*reply = resp.(MarkHealthyReply)
 	c.logCoordinator("healthy is marked: %v", c.deadMap.String())
 	return nil
 }
 
 func (c *Coordinator) FinishJob(args *FinishJobsArgs, reply *FinishJobsReply) error {
 	ev := JobEvent{
-		ID:       args.ReqID,
+		ReqID:    args.ReqID,
 		Type:     EVENT_FINISHJOB,
 		workerID: args.WorkerID,
 		Req:      *args,
@@ -333,15 +340,41 @@ END:
 }
 
 type HealthEvent struct {
+	ReqID    ReqID
+	Type     EventType
+	WorkerID WorkerID
+	Req      any
+	RespCh   chan any
 }
 
-func (c *Coordinator) handleHealthCheck(ev HealthEvent) {
+func (c *Coordinator) handleHealthCheck(ev HealthEvent) error {
+	switch ev.Type {
+	case EVENT_MARK_HEALTHY:
+		args, ok := ev.Req.(MarkHealthyArgs)
+		c.logCoordinator("handleHealthCheck is called for %v", args.ReqID)
+		reply := MarkHealthyReply{}
+		if !ok {
+			reply.Err = ErrInternal
+			ev.RespCh <- reply
+			return fmt.Errorf("wrong type on req, got %T, want %T", args, MarkHealthyArgs{})
+		}
+		if err := c.deadMap.MarkHealthy(args.WorkerID); err != nil {
+			reply.Err = ErrInternal
+			ev.RespCh <- reply
+			return fmt.Errorf("failed on c.deadMap.MarkHealthy: %v", err)
+		}
+		ev.RespCh <- reply
+		return nil
+	case EVENT_CHECK_HEALTHY:
+	default:
+		panic("unexpected event type")
+	}
 	c.logCoordinator("handleHealthCheck is called")
-	return
+	return nil
 }
 
 type JobEvent struct {
-	ID       ReqID
+	ReqID    ReqID
 	Type     EventType
 	workerID WorkerID
 	Req      any
@@ -354,6 +387,8 @@ type EventType int
 const (
 	EVENT_GETJOB EventType = iota
 	EVENT_FINISHJOB
+	EVENT_MARK_HEALTHY
+	EVENT_CHECK_HEALTHY
 )
 
 func (c *Coordinator) handleJobEvent(ev JobEvent) error {
@@ -525,6 +560,7 @@ func (c *Coordinator) monitor() {
 		}
 		select {
 		case <-ticker.C:
+			// create checkWorkerAliveness event
 			if err := c.checkWorkerAliveness(); err != nil {
 				c.logCoordinator("in monitor, failed on c.checkWorkerAliveness: %v", err)
 			}
@@ -596,7 +632,7 @@ var (
 
 func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) {
 	ev := JobEvent{
-		ID:       args.ReqID,
+		ReqID:    args.ReqID,
 		Type:     EVENT_GETJOB,
 		workerID: args.WorkerID,
 		Req:      *args,
@@ -683,7 +719,10 @@ func (l *localMailBox) FinishJob(workerID WorkerID, jobID JobID) error {
 }
 
 func (l *localMailBox) MarkHealthy(workerID WorkerID) error {
-	args := MarkHealthyArgs{}
+	args := MarkHealthyArgs{
+		ReqID:    NewReqID(),
+		WorkerID: workerID,
+	}
 	reply := MarkHealthyReply{}
 	if err := l.coorService.MarkHealthy(&args, &reply); err != nil {
 		return fmt.Errorf("failed on l.coorService.MarkHealthy: %v", err)

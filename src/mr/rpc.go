@@ -48,6 +48,7 @@ type MarkHealthyArgs struct {
 }
 
 type MarkHealthyReply struct {
+	Err error
 }
 
 // Add your RPC definitions here.
