@@ -85,7 +85,7 @@ var _ = Describe("LocalWorker", func() {
 		BeforeEach(func() {
 			req = &mr.WordCountArgs{FileNames: fileNames}
 			reply = &mr.WordCountReply{}
-			err = coor.WordCount(req, reply)
+			err = coor.NewWordCount(req, reply)
 			Expect(err).ShouldNot(HaveOccurred())
 			/*
 				for !coor.Done() {
