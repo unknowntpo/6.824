@@ -223,8 +223,14 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 	return nil
 }
 
+// FIXME: Tidy up error return flow
+// Where should we put error ?
 func (c *Coordinator) MarkHealthy(args *MarkHealthyArgs, reply *MarkHealthyReply) error {
 	c.logCoordinator("MarkHealthy is called for workerID: %v, ReqID: %v", args.WorkerID, args.ReqID)
+	if c.PhaseIs(PHASE_DONE) {
+		reply.Err = ErrDone
+		return ErrDone
+	}
 	ev := HealthEvent{
 		ReqID:    args.ReqID,
 		Type:     EVENT_MARK_HEALTHY,
@@ -726,7 +732,12 @@ func (l *localMailBox) MarkHealthy(workerID WorkerID) error {
 	}
 	reply := MarkHealthyReply{}
 	if err := l.coorService.MarkHealthy(&args, &reply); err != nil {
-		return fmt.Errorf("failed on l.coorService.MarkHealthy: %v", err)
+		switch {
+		case err == ErrDone:
+			return ErrDone
+		default:
+			return fmt.Errorf("failed on l.coorService.MarkHealthy: %v", err)
+		}
 	}
 	return nil
 }

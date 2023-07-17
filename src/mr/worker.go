@@ -173,12 +173,18 @@ type Worker struct {
 func (l *Worker) IsHealthy() bool { return true }
 func (l *Worker) handleHeartBeat(errChan chan error) {
 	ticker := time.NewTicker(1 * time.Second)
-	for _ = range ticker.C {
+	for range ticker.C {
 		if l.Done() {
 			return
 		}
 		if err := l.coMailBox.MarkHealthy(l.ID); err != nil {
-			errChan <- fmt.Errorf("failed on l.coMailBox.MarkHealthy: %v", err)
+			switch {
+			case err == ErrDone:
+				l.logWorker("receive ErrDone")
+				return
+			default:
+				errChan <- fmt.Errorf("failed on l.coMailBox.MarkHealthy: %v", err)
+			}
 		}
 	}
 }
