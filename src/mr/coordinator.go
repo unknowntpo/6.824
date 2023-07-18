@@ -25,6 +25,7 @@ type Coordinator struct {
 
 	mapJobWaitGroup    sync.WaitGroup
 	reduceJobWaitGroup sync.WaitGroup
+	cleanupWaitGroup   sync.WaitGroup
 
 	phase   Phase
 	phaseMu sync.RWMutex
@@ -302,9 +303,11 @@ func (c *Coordinator) doMapReduce(mapJobs []Job, reduceJobs []Job) error {
 
 	c.ChangePhase(PHASE_DONE)
 
-	c.logCoordinator("all jobs are done")
+	c.JobQueue.Stop()
+	c.cleanupWaitGroup.Add(c.workerMap.NumOfWorker())
+	c.schedule(nil, PHASE_DONE)
 
-	//c.JobQueue.Stop()
+	c.logCoordinator("all jobs are done")
 
 	return nil
 }
@@ -314,9 +317,11 @@ func (c *Coordinator) schedule(jobs []Job, phase Phase) error {
 	go func() {
 		switch phase {
 		case PHASE_MAP:
-			c.mapJobWaitGroup.Wait()
+			c.WaitForMap()
 		case PHASE_REDUCE:
-			c.reduceJobWaitGroup.Wait()
+			c.WaitForReduce()
+		case PHASE_DONE:
+			c.WaitForDone()
 		}
 		cancel()
 	}()
@@ -405,7 +410,14 @@ func (c *Coordinator) handleJobEvent(ev JobEvent) error {
 		)
 
 		if c.PhaseIs(PHASE_DONE) {
+			req, ok := ev.Req.(GetJobsArgs)
+			if !ok {
+				ev.RespCh <- ErrInternal
+				return fmt.Errorf("wrong type on req, got %T, want %T", req, GetJobsArgs{})
+			}
 			reply.Err = ErrDone
+			c.deadMap.RemoveWorker(req.WorkerID)
+			c.cleanupWaitGroup.Done()
 			ev.RespCh <- reply
 			return nil
 		}
@@ -553,6 +565,10 @@ func (c *Coordinator) WaitForReduce() {
 
 func (c *Coordinator) WaitForMap() {
 	c.mapJobWaitGroup.Wait()
+}
+
+func (c *Coordinator) WaitForDone() {
+	c.cleanupWaitGroup.Wait()
 }
 
 // start a thread that listens for RPCs from worker.go
