@@ -287,7 +287,10 @@ func (c *Coordinator) doMapReduce(mapJobs []Job, reduceJobs []Job) error {
 			return err
 		}
 	}
-	c.schedule(mapJobs, PHASE_MAP)
+
+	if err := c.schedule(mapJobs, PHASE_MAP); err != nil {
+		return fmt.Errorf("failed on c.schedule for PHASE_MAP: %v", err)
+	}
 
 	c.ChangePhase(PHASE_REDUCE)
 
@@ -299,13 +302,18 @@ func (c *Coordinator) doMapReduce(mapJobs []Job, reduceJobs []Job) error {
 		}
 	}
 
-	c.schedule(reduceJobs, PHASE_REDUCE)
+	if err := c.schedule(reduceJobs, PHASE_REDUCE); err != nil {
+		return fmt.Errorf("failed on c.schedule for PHASE_REDUCE: %v", err)
+	}
 
 	c.ChangePhase(PHASE_DONE)
 
 	c.JobQueue.Stop()
 	c.cleanupWaitGroup.Add(c.workerMap.NumOfWorker())
-	c.schedule(nil, PHASE_DONE)
+
+	if err := c.schedule(nil, PHASE_DONE); err != nil {
+		return fmt.Errorf("failed on c.schedule for PHASE_DONE: %v", err)
+	}
 
 	c.logCoordinator("all jobs are done")
 
@@ -325,10 +333,14 @@ func (c *Coordinator) schedule(jobs []Job, phase Phase) error {
 		}
 		cancel()
 	}()
+
+	c.logCoordinator("in schedule for %v", phase)
 	for {
+
 		select {
 		case ev, ok := <-c.jobEventCh:
 			if !ok {
+				c.logCoordinator("jobEventCh is closed")
 				return nil
 			}
 			c.logCoordinator("before handleJobEvent")
@@ -401,6 +413,7 @@ const (
 )
 
 func (c *Coordinator) handleJobEvent(ev JobEvent) error {
+	c.logCoordinator("inside handleJobEvent")
 	switch ev.Type {
 	case EVENT_GETJOB:
 		var (
@@ -653,7 +666,8 @@ var (
 	ErrConn               = errors.New("connection error")
 )
 
-func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) {
+func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
+	c.logCoordinator("Coordinator.GetJobs is called for workerID: %v, ReqID: %v", args.WorkerID, args.ReqID)
 	ev := JobEvent{
 		ReqID:    args.ReqID,
 		Type:     EVENT_GETJOB,
@@ -664,22 +678,47 @@ func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) {
 	c.jobEventCh <- ev
 	resp := <-ev.RespCh
 	*reply = resp.(GetJobsReply)
+	c.logCoordinator("Coordinator.GetJobs is done for workerID: %v, ReqID: %v", args.WorkerID, args.ReqID)
+	return reply.Err
 }
 
 const DefaultJobQueueCap = 10
 
 // FIXME: Coordinator should know nReduce in advance ?
 func NewLocalCoordinator(files []string, nReduce int) *Coordinator {
+	return newCoordinator(files, nReduce, TYPE_LOCAL)
+}
+
+type coorType int
+
+const (
+	TYPE_LOCAL coorType = iota
+	TYPE_RPC
+)
+
+func newCoordinator(files []string, nReduce int, typ coorType) *Coordinator {
 	c := &Coordinator{nReduce: nReduce}
-	m := &localMailBox{coorService: c}
-	c.MailBox = m
+
+	// set up mailbox
+	switch typ {
+	case TYPE_LOCAL:
+		m := &localMailBox{coorService: c}
+		c.MailBox = m
+	case TYPE_RPC:
+		m := &RPCMailBox{coorService: c}
+		c.MailBox = m
+	default:
+		panic("invalid type")
+	}
+
 	c.workerMap = NewWorkerMap()
 	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap, c)
 	c.nReduce = nReduce
-	// c.deadMap = map[WorkerID]bool{}
+	c.deadMap = map[WorkerID]bool{}
 	c.jobEventCh = make(chan JobEvent, 10)
 	c.healthCh = make(chan HealthEvent, 10)
-	c.Serve()
+	// FIXME: should wait for this goroutine
+	go c.Serve()
 	return c
 }
 
@@ -687,16 +726,7 @@ func NewLocalCoordinator(files []string, nReduce int) *Coordinator {
 // main/mrcoordinator.go calls this function.
 // nReduce is the number of reduce tasks to use.
 func NewRPCCoordinator(files []string, nReduce int) *Coordinator {
-	c := &Coordinator{nReduce: nReduce}
-	m := &RPCMailBox{coorService: c}
-	c.MailBox = m
-	c.workerMap = NewWorkerMap()
-	c.JobQueue = NewLocalJobQueue(DefaultJobQueueCap, c)
-	c.nReduce = nReduce
-	//	c.deadMap = map[WorkerID]bool{}
-	c.jobEventCh = make(chan JobEvent, 10)
-	c.healthCh = make(chan HealthEvent, 10)
-	return c
+	return newCoordinator(files, nReduce, TYPE_RPC)
 }
 
 type CoorMailBox interface {
@@ -718,8 +748,8 @@ func (l *localMailBox) Serve() {
 func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 	args := &GetJobsArgs{ReqID: NewReqID(), WorkerID: workerID}
 	reply := &GetJobsReply{}
-	l.coorService.logCoordinator("localMailBox try to call rpc GetJobs")
-	if l.coorService.GetJobs(args, reply); reply.Err != nil {
+	l.coorService.logCoordinator("localMailBox try to call GetJobs")
+	if err := l.coorService.GetJobs(args, reply); err != nil {
 		switch {
 		case reply.Err == ErrDone:
 			return nil, reply.Err

@@ -26,7 +26,6 @@ func main() {
 	}
 
 	m := mr.NewRPCCoordinator(os.Args[1:], nReduce)
-	go m.Serve()
 	args := &mr.WordCountArgs{FileNames: os.Args[1:]}
 	reply := &mr.WordCountReply{}
 	if err := m.WordCount(args, reply); err != nil {

@@ -170,37 +170,22 @@ type Worker struct {
 	done      atomic.Bool
 }
 
-func (l *Worker) IsHealthy() bool { return true }
-func (l *Worker) handleHeartBeat(errChan chan error) {
-	ticker := time.NewTicker(1 * time.Second)
-	for range ticker.C {
-		if l.Done() {
-			return
-		}
-		if err := l.coMailBox.MarkHealthy(l.ID); err != nil {
-			switch {
-			case err == ErrDone:
-				l.logWorker("receive ErrDone")
-				return
-			default:
-				errChan <- fmt.Errorf("failed on l.coMailBox.MarkHealthy: %v", err)
-			}
-		}
+func (l *Worker) HeartBeat() {
+	timer := time.NewTicker(1 * time.Second)
+	for range timer.C {
+		l.logWorker("heart is beating")
 	}
 }
 
+func (l *Worker) IsHealthy() bool { return true }
 func (l *Worker) Serve(ctx context.Context) error {
 	// go l.HeartBeat()
 	defer l.logWorker("worker Exit Serve")
-
 	heartBeatTimer := time.NewTicker(1 * time.Second)
 
 	//	deadTimer := time.NewTicker(6 * time.Second)
-	timer := time.NewTicker(100 * time.Millisecond)
-	//timer := time.NewTicker(1 * time.Second)
+	timer := time.NewTicker(1 * time.Microsecond)
 	errChan := make(chan error, 30)
-
-	go l.handleHeartBeat(errChan)
 
 LOOP:
 	for {
@@ -210,6 +195,7 @@ LOOP:
 			//		case <-deadTimer.C:
 			//			panic("dead")
 		case <-timer.C:
+			l.logWorker("try to call get jobs")
 			jobs, err := l.coMailBox.GetJobs(l.ID)
 			if err != nil {
 				switch {
@@ -219,7 +205,6 @@ LOOP:
 					goto DONE
 				case strings.Contains(err.Error(), ErrNoJob.Error()):
 					l.logWorker("no job")
-					time.Sleep(500 * time.Millisecond)
 					goto LOOP
 				default:
 					errChan <- err
@@ -235,7 +220,7 @@ LOOP:
 					case err == ErrDone:
 						goto DONE
 					default:
-						l.logWorker("handleJob failed: %v", err)
+						l.logWorker("%v", err)
 						goto LOOP
 					}
 				}
@@ -301,7 +286,6 @@ func (l *Worker) doReduce(j Job, kvs []KeyValue) error {
 
 func (l *Worker) handleJobs(ctx context.Context, jobs []Job) error {
 	for _, j := range jobs {
-		l.logWorker("got job: %v", j)
 		switch j.JobType {
 		case TYPE_MAP:
 			b, err := ioutil.ReadFile(j.FileName)
@@ -424,6 +408,32 @@ func (l *Worker) readKeyValuesFromFile(fileName string) ([]KeyValue, error) {
 	return out.KVS, nil
 }
 
+// example function to show how to make an RPC call to the coordinator.
+//
+// the RPC argument and reply types are defined in rpc.go.
+func CallExample() {
+
+	// declare an argument structure.
+	args := ExampleArgs{}
+
+	// fill in the argument(s).
+	args.X = 99
+
+	// declare a reply structure.
+	reply := ExampleReply{}
+
+	// send the RPC request, wait for the reply.
+	// the "Coordinator.Example" tells the
+	// receiving server that we'd like to call
+	// the Example() method of struct Coordinator.
+	if err := call("Coordinator.Example", &args, &reply); err != nil {
+		// reply.Y should be 100.
+		fmt.Printf("call failed!\n")
+	} else {
+		fmt.Printf(" reply.Y: %v\n", reply.Y)
+	}
+}
+
 const RETRY_COUNT = 10
 
 func dialWithRetry(retryCnt int) (*rpc.Client, error) {
@@ -431,18 +441,15 @@ func dialWithRetry(retryCnt int) (*rpc.Client, error) {
 	for {
 		c, err := rpc.DialHTTP("unix", sockname)
 		defer func() {
-			if err != nil && c != nil {
+			if c != nil {
 				c.Close()
 			}
 		}()
 		if err != nil {
-			isConnErr := strings.Contains(err.Error(), "connection refused") &&
-				strings.Contains(err.Error(), rpc.ErrShutdown.Error())
 			switch {
-			case isConnErr:
-				fmt.Println("isConnErr")
+			case strings.Contains(err.Error(), "connection refused"):
 				if retryCnt > 0 {
-					time.Sleep(50 * time.Millisecond)
+					time.Sleep(10 * time.Millisecond)
 					retryCnt--
 					continue
 				} else {
@@ -459,56 +466,40 @@ func dialWithRetry(retryCnt int) (*rpc.Client, error) {
 
 func callWithRetry(rpcname string, args interface{}, reply interface{}) error {
 	retryCnt := 10
-	c, err := dialWithRetry(retryCnt)
-	if err != nil {
-		switch {
-		case err == ErrDone:
-			return ErrDone
-		default:
-			return fmt.Errorf("dialing: %v", err)
-		}
-	}
 	for {
-		if err := call(c, rpcname, args, reply); err != nil {
+		if err := call(rpcname, args, reply); err != nil {
 			switch {
-			case err == ErrConn:
+			case strings.Contains(err.Error(), "connection refused"):
+			case strings.Contains(err.Error(), rpc.ErrShutdown.Error()):
 				if retryCnt > 0 {
-					time.Sleep(50 * time.Millisecond)
-					//time.Sleep(1 * time.Second)
+					time.Sleep(10 * time.Millisecond)
 					retryCnt--
 					continue
 				} else {
 					// Treat it as done
 					return ErrDone
 				}
-			case err == ErrNoJob:
-				return ErrNoJob
-			case err == ErrDone:
-				return ErrDone
+      case ErrNoJob:
 			default:
 				return fmt.Errorf("dialing: %v", err)
 			}
 		}
-		// No error
-		return nil
 	}
 }
 
 // send an RPC request to the coordinator, wait for the response.
 // usually returns true.
 // returns false if something goes wrong.
-func call(c *rpc.Client, rpcname string, args interface{}, reply interface{}) error {
+func call(rpcname string, args interface{}, reply interface{}) error {
+	sockname := coordinatorSock()
+	c, err := rpc.DialHTTP("unix", sockname)
+	if err != nil {
+		return fmt.Errorf("dialing: %v", err)
+	}
 	if err := c.Call(rpcname, args, reply); err != nil {
-		isConnErr := strings.Contains(err.Error(), "connection refused") ||
-			strings.Contains(err.Error(), rpc.ErrShutdown.Error())
-		fmt.Println("incall, err", err)
 		switch {
-		case isConnErr:
-			return ErrConn
 		case err == ErrDone:
 			return ErrDone
-		case err == ErrNoJob:
-			return ErrNoJob
 		default:
 			return fmt.Errorf("failed on rpc.Client.Call: %v", err)
 		}
