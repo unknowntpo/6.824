@@ -5,13 +5,15 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"net/rpc"
 	"os"
 	"sync"
 	"time"
+
+	// "github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
 type Coordinator struct {
@@ -54,6 +56,14 @@ func (dm deadMap) markWorkerStatus(workerID WorkerID, isDead bool) error {
 		return ErrWorkerDoesNotExist
 	}
 	dm[workerID] = isDead
+	return nil
+}
+
+func (dm deadMap) AddWorker(workerID WorkerID) error {
+	if _, ok := dm[workerID]; !ok {
+		// add non-existed worker to deadMap, and mark it alive
+		dm[workerID] = false
+	}
 	return nil
 }
 
@@ -169,7 +179,7 @@ func (m *WorkerMap) FinishJob(workerID WorkerID, jobID JobID) error {
 }
 
 func (c *Coordinator) logCoordinator(format string, args ...interface{}) {
-	log.Printf("Coordinator[]\t"+format, args...)
+	log.Info().Msgf("Coordinator[]\t"+format, args...)
 }
 
 type JobQueue struct {
@@ -444,6 +454,13 @@ func (c *Coordinator) handleJobEvent(ev JobEvent) error {
 		}
 
 		c.logCoordinator("after type assert")
+
+		// add worker if it doesn't exist
+		if err := c.deadMap.AddWorker(req.WorkerID); err != nil {
+			reply.Err = ErrInternal
+			ev.RespCh <- reply
+			return fmt.Errorf("failed on c.deadMap.AddWorker: %v", err)
+		}
 
 		j, err = c.JobQueue.GetJob()
 		if err != nil {
@@ -809,7 +826,7 @@ func (r *RPCMailBox) Serve() {
 	os.Remove(sockname)
 	l, e := net.Listen("unix", sockname)
 	if e != nil {
-		log.Fatal("listen error:", e)
+		log.Fatal().Msgf("listen error: %v", e)
 	}
 	go http.Serve(l, nil)
 }

@@ -12,7 +12,6 @@ package main
 import (
 	"fmt"
 	"os"
-	"time"
 
 	"6.824/mr"
 )
@@ -31,9 +30,5 @@ func main() {
 	if err := m.NewWordCount(args, reply); err != nil {
 		fmt.Fprintf(os.Stderr, "failed on m.WordCount: %v", err)
 		return
-	}
-
-	for !m.Done() {
-		time.Sleep(500 * time.Millisecond)
 	}
 }
