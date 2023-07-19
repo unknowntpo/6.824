@@ -28,7 +28,7 @@ func main() {
 	m := mr.NewRPCCoordinator(os.Args[1:], nReduce)
 	args := &mr.WordCountArgs{FileNames: os.Args[1:]}
 	reply := &mr.WordCountReply{}
-	if err := m.WordCount(args, reply); err != nil {
+	if err := m.NewWordCount(args, reply); err != nil {
 		fmt.Fprintf(os.Stderr, "failed on m.WordCount: %v", err)
 		return
 	}

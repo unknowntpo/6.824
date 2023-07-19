@@ -191,9 +191,14 @@ LOOP:
 	for {
 		select {
 		case <-heartBeatTimer.C:
-			// deadTimer.Reset(6 * time.Second)
-			//		case <-deadTimer.C:
-			//			panic("dead")
+			if err := l.coMailBox.MarkHealthy(l.ID); err != nil {
+				switch {
+				case err == ErrDone:
+					goto DONE
+				default:
+					errChan <- err
+				}
+			}
 		case <-timer.C:
 			l.logWorker("try to call get jobs")
 			jobs, err := l.coMailBox.GetJobs(l.ID)
@@ -205,24 +210,21 @@ LOOP:
 					goto DONE
 				case strings.Contains(err.Error(), ErrNoJob.Error()):
 					l.logWorker("no job")
+					panic("p")
 					goto LOOP
 				default:
 					errChan <- err
 					goto LOOP
 				}
 			}
-			if jobs == nil {
-				l.logWorker("no jobs")
-			}
-			if jobs != nil {
-				if err := l.handleJobs(ctx, jobs); err != nil {
-					switch {
-					case err == ErrDone:
-						goto DONE
-					default:
-						l.logWorker("%v", err)
-						goto LOOP
-					}
+
+			if err := l.handleJobs(ctx, jobs); err != nil {
+				switch {
+				case err == ErrDone:
+					goto DONE
+				default:
+					l.logWorker("%v", err)
+					goto LOOP
 				}
 			}
 		case err := <-errChan:
@@ -285,6 +287,7 @@ func (l *Worker) doReduce(j Job, kvs []KeyValue) error {
 }
 
 func (l *Worker) handleJobs(ctx context.Context, jobs []Job) error {
+	l.logWorker("inside handleJobs for", jobs)
 	for _, j := range jobs {
 		switch j.JobType {
 		case TYPE_MAP:
@@ -329,6 +332,7 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job) error {
 				return fmt.Errorf("failed on l.doReduce for %v: %v", j, err)
 			}
 		}
+		l.logWorker("try to call FinishJob for job [%v]", j.ID)
 		if err := l.coMailBox.FinishJob(l.ID, j.ID); err != nil {
 			switch {
 			case strings.Contains(err.Error(), ErrDone.Error()):
@@ -479,10 +483,13 @@ func callWithRetry(rpcname string, args interface{}, reply interface{}) error {
 					// Treat it as done
 					return ErrDone
 				}
-      case ErrNoJob:
+			case err == ErrNoJob:
+				return ErrNoJob
 			default:
 				return fmt.Errorf("dialing: %v", err)
 			}
+		} else {
+			return nil
 		}
 	}
 }
@@ -500,6 +507,8 @@ func call(rpcname string, args interface{}, reply interface{}) error {
 		switch {
 		case err == ErrDone:
 			return ErrDone
+		case err == ErrNoJob:
+			return ErrNoJob
 		default:
 			return fmt.Errorf("failed on rpc.Client.Call: %v", err)
 		}

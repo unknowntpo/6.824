@@ -247,6 +247,7 @@ func (c *Coordinator) MarkHealthy(args *MarkHealthyArgs, reply *MarkHealthyReply
 }
 
 func (c *Coordinator) FinishJob(args *FinishJobsArgs, reply *FinishJobsReply) error {
+	c.logCoordinator("FinishJob is called for workerID: %v, ReqID: %v", args.WorkerID, args.ReqID)
 	ev := JobEvent{
 		ReqID:    args.ReqID,
 		Type:     EVENT_FINISHJOB,
@@ -336,15 +337,16 @@ func (c *Coordinator) schedule(jobs []Job, phase Phase) error {
 
 	c.logCoordinator("in schedule for %v", phase)
 	for {
-
 		select {
 		case ev, ok := <-c.jobEventCh:
 			if !ok {
 				c.logCoordinator("jobEventCh is closed")
 				return nil
 			}
-			c.logCoordinator("before handleJobEvent")
-			c.handleJobEvent(ev)
+			c.logCoordinator("got event: %#v", ev)
+			if err := c.handleJobEvent(ev); err != nil {
+				return fmt.Errorf("failed on c.handleJobEvent: %v", err)
+			}
 		case ev := <-c.healthCh:
 			c.handleHealthCheck(ev)
 		case <-ctx.Done():
@@ -471,9 +473,10 @@ func (c *Coordinator) handleJobEvent(ev JobEvent) error {
 			return fmt.Errorf("failed on c.workerMap.AddJob: %v", err)
 		}
 
-		// c.logCoordinator("job is added worker %v, req[%v]", args.WorkerID, args.ReqID)
 		reply.Jobs = []Job{j}
 		ev.RespCh <- reply
+
+		c.logCoordinator("job is added worker %v, req[%v]", req.WorkerID, req.ReqID)
 		return nil
 	case EVENT_FINISHJOB:
 		reply := FinishJobsReply{}
@@ -678,7 +681,8 @@ func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
 	c.jobEventCh <- ev
 	resp := <-ev.RespCh
 	*reply = resp.(GetJobsReply)
-	c.logCoordinator("Coordinator.GetJobs is done for workerID: %v, ReqID: %v", args.WorkerID, args.ReqID)
+	c.logCoordinator("Coordinator.GetJobs is done for workerID: %v, ReqID: %v, Resp: %v", args.WorkerID, args.ReqID, debug(reply))
+	c.logCoordinator("err in reply.Err", reply.Err)
 	return reply.Err
 }
 
@@ -751,12 +755,12 @@ func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 	l.coorService.logCoordinator("localMailBox try to call GetJobs")
 	if err := l.coorService.GetJobs(args, reply); err != nil {
 		switch {
-		case reply.Err == ErrDone:
+		case err == ErrDone:
 			return nil, reply.Err
-		case reply.Err == ErrNoJob:
+		case err == ErrNoJob:
 			return nil, reply.Err
 		default:
-			return nil, fmt.Errorf("failed on l.coorService.GetJobs: %v", reply.Err)
+			return nil, fmt.Errorf("failed on l.coorService.GetJobs: %v", err)
 		}
 	}
 	return reply.Jobs, nil
@@ -814,7 +818,6 @@ func (r *RPCMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 	args := GetJobsArgs{WorkerID: workerID, ReqID: NewReqID()}
 	reply := GetJobsReply{}
 	rpcName := "Coordinator.GetJobs"
-	//	if err := callWithRetry(rpcName, &args, &reply); err != nil {
 	if err := callWithRetry(rpcName, &args, &reply); err != nil {
 		switch {
 		case err == ErrDone:
@@ -825,6 +828,7 @@ func (r *RPCMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 			return nil, fmt.Errorf("failed on rpc call [%v]: %v", rpcName, err)
 		}
 	}
+	fmt.Printf("GetJobs for worker is done, Req:[%v], workerID:[%v]\n", args.ReqID, args.WorkerID)
 	return reply.Jobs, nil
 }
 
