@@ -483,6 +483,8 @@ func callWithRetry(rpcname string, args interface{}, reply interface{}) error {
 			default:
 				return fmt.Errorf("dialing: %v", err)
 			}
+		} else {
+			return nil
 		}
 	}
 }
