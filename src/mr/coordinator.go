@@ -295,6 +295,7 @@ func (c *Coordinator) NewWordCount(args *WordCountArgs, reply *WordCountReply) e
 }
 
 func (c *Coordinator) doMapReduce(mapJobs []Job, reduceJobs []Job) error {
+	c.LogInfo("change to PHASE_MAP")
 	c.ChangePhase(PHASE_MAP)
 	c.mapJobWaitGroup.Add(len(mapJobs))
 	for _, j := range mapJobs {
@@ -306,6 +307,8 @@ func (c *Coordinator) doMapReduce(mapJobs []Job, reduceJobs []Job) error {
 	if err := c.schedule(mapJobs, PHASE_MAP); err != nil {
 		return fmt.Errorf("failed on c.schedule for PHASE_MAP: %v", err)
 	}
+
+	c.LogInfo("change to PHASE_REDUCE")
 
 	c.ChangePhase(PHASE_REDUCE)
 
@@ -527,6 +530,7 @@ func (c *Coordinator) handleJobEvent(ev JobEvent) error {
 		case PHASE_REDUCE:
 			c.reduceJobWaitGroup.Done()
 		}
+		c.LogInfo("ZZZ finish job is done for worker %v, req: %v, job: %v", req.WorkerID, req.ReqID, req.JobID)
 		ev.RespCh <- reply
 		return nil
 	default:
