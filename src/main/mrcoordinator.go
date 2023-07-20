@@ -27,7 +27,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	zerolog.SetGlobalLevel(zerolog.InfoLevel)
+	zerolog.SetGlobalLevel(zerolog.ErrorLevel)
 
 	file, err := os.OpenFile("log-co.txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 	must(err)
