@@ -178,8 +178,12 @@ func (m *WorkerMap) FinishJob(workerID WorkerID, jobID JobID) error {
 	return nil
 }
 
-func (c *Coordinator) logCoordinator(format string, args ...interface{}) {
+func (c *Coordinator) LogInfo(format string, args ...interface{}) {
 	log.Info().Msgf("Coordinator[]\t"+format, args...)
+}
+
+func (c *Coordinator) LogError(format string, args ...interface{}) {
+	log.Error().Msgf("Coordinator[]\t"+format, args...)
 }
 
 type JobQueue struct {
@@ -237,7 +241,7 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 // FIXME: Tidy up error return flow
 // Where should we put error ?
 func (c *Coordinator) MarkHealthy(args *MarkHealthyArgs, reply *MarkHealthyReply) error {
-	c.logCoordinator("MarkHealthy is called for workerID: %v, ReqID: %v", args.WorkerID, args.ReqID)
+	c.LogInfo("MarkHealthy is called for workerID: %v, ReqID: %v", args.WorkerID, args.ReqID)
 	if c.PhaseIs(PHASE_DONE) {
 		reply.Err = ErrDone
 		return ErrDone
@@ -252,12 +256,12 @@ func (c *Coordinator) MarkHealthy(args *MarkHealthyArgs, reply *MarkHealthyReply
 	c.healthCh <- ev
 	resp := <-ev.RespCh
 	*reply = resp.(MarkHealthyReply)
-	c.logCoordinator("healthy is marked: %v", c.deadMap.String())
+	c.LogInfo("healthy is marked: %v", c.deadMap.String())
 	return nil
 }
 
 func (c *Coordinator) FinishJob(args *FinishJobsArgs, reply *FinishJobsReply) error {
-	c.logCoordinator("FinishJob is called for workerID: %v, ReqID: %v", args.WorkerID, args.ReqID)
+	c.LogInfo("FinishJob is called for workerID: %v, ReqID: %v", args.WorkerID, args.ReqID)
 	ev := JobEvent{
 		ReqID:    args.ReqID,
 		Type:     EVENT_FINISHJOB,
@@ -326,13 +330,19 @@ func (c *Coordinator) doMapReduce(mapJobs []Job, reduceJobs []Job) error {
 		return fmt.Errorf("failed on c.schedule for PHASE_DONE: %v", err)
 	}
 
-	c.logCoordinator("all jobs are done")
+	c.LogInfo("all jobs are done")
 
 	return nil
 }
 
 func (c *Coordinator) schedule(jobs []Job, phase Phase) error {
+	// init control data structure
+	c.deadMap = deadMap{}
+
+	c.LogInfo("XXX c.workerMap", debug(c.workerMap.String()))
+
 	ctx, cancel := context.WithCancel(context.Background())
+	go c.monitor(ctx)
 	go func() {
 		switch phase {
 		case PHASE_MAP:
@@ -343,17 +353,18 @@ func (c *Coordinator) schedule(jobs []Job, phase Phase) error {
 			c.WaitForDone()
 		}
 		cancel()
+		c.LogInfo("YYY waitgroup existed for %v", phase)
 	}()
 
-	c.logCoordinator("in schedule for %v", phase)
+	c.LogInfo("in schedule for %v", phase)
 	for {
 		select {
 		case ev, ok := <-c.jobEventCh:
 			if !ok {
-				c.logCoordinator("jobEventCh is closed")
+				c.LogInfo("jobEventCh is closed")
 				return nil
 			}
-			c.logCoordinator("got event: %#v", ev)
+			c.LogInfo("got event: %#v", ev)
 			if err := c.handleJobEvent(ev); err != nil {
 				return fmt.Errorf("failed on c.handleJobEvent: %v", err)
 			}
@@ -377,7 +388,7 @@ func (c *Coordinator) handleHealthCheck(ev HealthEvent) error {
 	switch ev.Type {
 	case EVENT_MARK_HEALTHY:
 		args, ok := ev.Req.(MarkHealthyArgs)
-		c.logCoordinator("handleHealthCheck is called for %v", args.ReqID)
+		c.LogInfo("handleHealthCheck is called for %v", args.ReqID)
 		reply := MarkHealthyReply{}
 		if !ok {
 			reply.Err = ErrInternal
@@ -402,7 +413,7 @@ func (c *Coordinator) handleHealthCheck(ev HealthEvent) error {
 	default:
 		panic("unexpected event type")
 	}
-	c.logCoordinator("handleHealthCheck is called")
+	c.LogInfo("handleHealthCheck is called")
 	return nil
 }
 
@@ -425,7 +436,7 @@ const (
 )
 
 func (c *Coordinator) handleJobEvent(ev JobEvent) error {
-	c.logCoordinator("inside handleJobEvent")
+	c.LogInfo("inside handleJobEvent")
 	switch ev.Type {
 	case EVENT_GETJOB:
 		var (
@@ -453,7 +464,7 @@ func (c *Coordinator) handleJobEvent(ev JobEvent) error {
 			return fmt.Errorf("wrong type on req, got %T, want %T", req, GetJobsArgs{})
 		}
 
-		c.logCoordinator("after type assert")
+		c.LogInfo("after type assert")
 
 		// add worker if it doesn't exist
 		if err := c.deadMap.AddWorker(req.WorkerID); err != nil {
@@ -481,7 +492,7 @@ func (c *Coordinator) handleJobEvent(ev JobEvent) error {
 			}
 		}
 
-		c.logCoordinator("after GetJob")
+		c.LogInfo("after GetJob")
 
 		// at here, we got our job, so Phase is not possible to be PHASE_DONE
 		if err := c.workerMap.AddJob(j, req.WorkerID); err != nil {
@@ -493,7 +504,7 @@ func (c *Coordinator) handleJobEvent(ev JobEvent) error {
 		reply.Jobs = []Job{j}
 		ev.RespCh <- reply
 
-		c.logCoordinator("job is added worker %v, req[%v]", req.WorkerID, req.ReqID)
+		c.LogInfo("job is added worker %v, req[%v]", req.WorkerID, req.ReqID)
 		return nil
 	case EVENT_FINISHJOB:
 		reply := FinishJobsReply{}
@@ -538,15 +549,15 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 		if err := c.JobQueue.Submit(job); err != nil {
 			return err
 		}
-		c.logCoordinator("length of jobs: %v", c.JobQueue.NumOfJobs())
+		c.LogInfo("length of jobs: %v", c.JobQueue.NumOfJobs())
 		mapJobs = append(mapJobs, job)
 	}
 
 	c.WaitForMap()
 
-	c.logCoordinator("all map jobs are done")
+	c.LogInfo("all map jobs are done")
 
-	c.logCoordinator("try to change phase")
+	c.LogInfo("try to change phase")
 	c.ChangePhase(PHASE_REDUCE)
 
 	c.reduceJobWaitGroup.Add(c.nReduce)
@@ -569,14 +580,14 @@ func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) erro
 
 	c.JobQueue.Stop()
 
-	c.logCoordinator("all jobs are done")
+	c.LogInfo("all jobs are done")
 
 	time.Sleep(3 * time.Second)
 
 	// Wait for all worker to die
 	for !c.Done() {
-		c.logCoordinator("in wordcount: not done")
-		c.logCoordinator("workers num: %v", c.workerMap.NumOfWorker())
+		c.LogInfo("in wordcount: not done")
+		c.LogInfo("workers num: %v", c.workerMap.NumOfWorker())
 		time.Sleep(100 * time.Millisecond)
 	}
 
@@ -607,21 +618,29 @@ func (c *Coordinator) WaitForDone() {
 // start a thread that listens for RPCs from worker.go
 func (c *Coordinator) Serve() {
 	c.MailBox.Serve()
-	// FIXME: use waitgroup for graceful shutdown and avoid goroutine leak
-	go c.monitor()
 }
 
-func (c *Coordinator) monitor() {
+func (c *Coordinator) monitor(ctx context.Context) {
 	ticker := time.NewTicker(1 * time.Second)
 	for {
-		if c.PhaseIs(PHASE_DONE) {
-			return
-		}
 		select {
+		case <-ctx.Done():
+			return
 		case <-ticker.C:
 			// create checkWorkerAliveness event
-			if err := c.syncWorkerAliveness(); err != nil {
-				c.logCoordinator("in monitor, failed on c.checkWorkerAliveness: %v", err)
+			ev := HealthEvent{
+				ReqID:  NewReqID(),
+				Type:   EVENT_CHECK_HEALTHY,
+				RespCh: make(chan any),
+			}
+			c.healthCh <- ev
+			respInt := <-ev.RespCh
+			resp, ok := respInt.(CheckHealthyReply)
+			if !ok {
+				c.LogError("wrong type on req, got %T, want %T", respInt, CheckHealthyReply{})
+			}
+			if resp.Err != nil {
+				c.LogError("failed to check health: %v", resp.Err)
 			}
 		}
 	}
@@ -632,10 +651,10 @@ func (c *Coordinator) monitor() {
 // set dead == true for worker in dead map
 func (c *Coordinator) syncWorkerAliveness() error {
 	errSlice := []error{}
-	c.logCoordinator("checkWorkerAliveness")
+	c.LogInfo("checkWorkerAliveness")
 	for workerID, isDead := range c.deadMap {
 		if isDead {
-			c.logCoordinator("worker[%v] is dead", workerID)
+			c.LogInfo("worker[%v] is dead", workerID)
 			// get all job of that worker in c.workerMap, ressign them to jobQueue
 			jobs, err := c.workerMap.GetJobsByWorkerID(workerID)
 			if err != nil {
@@ -652,7 +671,7 @@ func (c *Coordinator) syncWorkerAliveness() error {
 			// set it back to false
 		}
 	}
-	c.logCoordinator("liveness: %v", c.deadMap)
+	c.LogInfo("liveness: %v", c.deadMap)
 	if len(errSlice) != 0 {
 		var err error
 		for _, e := range errSlice {
@@ -687,7 +706,7 @@ var (
 )
 
 func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
-	c.logCoordinator("Coordinator.GetJobs is called for workerID: %v, ReqID: %v", args.WorkerID, args.ReqID)
+	c.LogInfo("Coordinator.GetJobs is called for workerID: %v, ReqID: %v", args.WorkerID, args.ReqID)
 	ev := JobEvent{
 		ReqID:    args.ReqID,
 		Type:     EVENT_GETJOB,
@@ -698,8 +717,8 @@ func (c *Coordinator) GetJobs(args *GetJobsArgs, reply *GetJobsReply) error {
 	c.jobEventCh <- ev
 	resp := <-ev.RespCh
 	*reply = resp.(GetJobsReply)
-	c.logCoordinator("Coordinator.GetJobs is done for workerID: %v, ReqID: %v, Resp: %v", args.WorkerID, args.ReqID, debug(reply))
-	c.logCoordinator("err in reply.Err", reply.Err)
+	c.LogInfo("Coordinator.GetJobs is done for workerID: %v, ReqID: %v, Resp: %v", args.WorkerID, args.ReqID, debug(reply))
+	c.LogInfo("err in reply.Err", reply.Err)
 	return reply.Err
 }
 
@@ -769,7 +788,7 @@ func (l *localMailBox) Serve() {
 func (l *localMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 	args := &GetJobsArgs{ReqID: NewReqID(), WorkerID: workerID}
 	reply := &GetJobsReply{}
-	l.coorService.logCoordinator("localMailBox try to call GetJobs")
+	l.coorService.LogInfo("localMailBox try to call GetJobs")
 	if err := l.coorService.GetJobs(args, reply); err != nil {
 		switch {
 		case err == ErrDone:

@@ -14,6 +14,8 @@ import (
 	"os"
 
 	"6.824/mr"
+
+	"github.com/rs/zerolog"
 )
 
 const nReduce = 10
@@ -23,6 +25,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Usage: mrcoordinator inputfiles...\n")
 		os.Exit(1)
 	}
+
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
 	m := mr.NewRPCCoordinator(os.Args[1:], nReduce)
 	args := &mr.WordCountArgs{FileNames: os.Args[1:]}
