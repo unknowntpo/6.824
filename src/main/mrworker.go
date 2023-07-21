@@ -22,7 +22,7 @@ import (
 	"6.824/utils"
 )
 
-const nReduce = 10
+const nReduce = 8
 
 func main() {
 	if len(os.Args) != 2 {

@@ -179,7 +179,6 @@ func (l *Worker) HeartBeat() {
 
 func (l *Worker) IsHealthy() bool { return true }
 func (l *Worker) Serve(ctx context.Context) error {
-	// go l.HeartBeat()
 	defer l.logWorker("worker Exit Serve")
 	heartBeatTimer := time.NewTicker(1 * time.Second)
 
@@ -191,9 +190,14 @@ LOOP:
 	for {
 		select {
 		case <-heartBeatTimer.C:
-			// deadTimer.Reset(6 * time.Second)
-			//		case <-deadTimer.C:
-			//			panic("dead")
+			if err := l.coMailBox.MarkHealthy(l.ID); err != nil {
+				switch {
+				case err == ErrDone:
+					goto DONE
+				default:
+					errChan <- err
+				}
+			}
 		case <-timer.C:
 			l.logWorker("try to call get jobs")
 			jobs, err := l.coMailBox.GetJobs(l.ID)
@@ -338,7 +342,7 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job) error {
 				return fmt.Errorf("failed on l.coMailBox.FinishJob: %v", err)
 			}
 		}
-		l.logWorker("end of worker.handleJobs")
+		l.logWorker("end of worker.handleJobs for %v", j.ID)
 	}
 	return nil
 }
@@ -467,19 +471,24 @@ func dialWithRetry(retryCnt int) (*rpc.Client, error) {
 
 func callWithRetry(rpcname string, args interface{}, reply interface{}) error {
 	retryCnt := 10
+LOOP:
 	for {
 		if err := call(rpcname, args, reply); err != nil {
 			switch {
 			case strings.Contains(err.Error(), "connection refused"):
 			case strings.Contains(err.Error(), rpc.ErrShutdown.Error()):
+			// socket is removed
+			case strings.Contains(err.Error(), "no such file or directory"):
 				if retryCnt > 0 {
 					time.Sleep(10 * time.Millisecond)
 					retryCnt--
-					continue
+					goto LOOP
 				} else {
 					// Treat it as done
 					return ErrDone
 				}
+			case strings.Contains(err.Error(), ErrDone.Error()):
+				return ErrDone
 			default:
 				return fmt.Errorf("dialing: %v", err)
 			}

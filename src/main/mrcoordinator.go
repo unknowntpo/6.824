@@ -19,7 +19,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-const nReduce = 10
+const nReduce = 8
 
 func main() {
 	if len(os.Args) < 2 {
@@ -27,7 +27,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
 	file, err := os.OpenFile("log-co.txt", os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
 	must(err)
@@ -42,10 +42,12 @@ func main() {
 	m := mr.NewRPCCoordinator(os.Args[1:], nReduce)
 	args := &mr.WordCountArgs{FileNames: os.Args[1:]}
 	reply := &mr.WordCountReply{}
+	go m.Serve()
 	if err := m.NewWordCount(args, reply); err != nil {
 		fmt.Fprintf(os.Stderr, "failed on m.WordCount: %v", err)
 		return
 	}
+	m.Shutdown()
 }
 
 func must(err error) {
