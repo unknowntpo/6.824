@@ -434,6 +434,8 @@ func (c *Coordinator) handleHealthCheck(ev HealthEvent) error {
 			ev.RespCh <- reply
 			return fmt.Errorf("failed on c.checkWorkerAliveness: %v", err)
 		}
+		ev.RespCh <- reply
+		return nil
 	default:
 		panic("unexpected event type")
 	}
