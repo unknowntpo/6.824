@@ -462,11 +462,9 @@ const (
 )
 
 func (c *Coordinator) handleJobEvent(ev JobEvent) error {
-	c.LogInfo("inside handleJobEvent")
 	switch ev.Type {
 	case EVENT_GETJOB:
 		var (
-			j     Job
 			err   error
 			reply GetJobsReply
 		)
@@ -489,15 +487,16 @@ func (c *Coordinator) handleJobEvent(ev JobEvent) error {
 			ev.RespCh <- ErrInternal
 			return fmt.Errorf("wrong type on req, got %T, want %T", req, GetJobsArgs{})
 		}
+		c.LogError("KKK handle get job event for worker %v, req: %v", req.WorkerID, req.ReqID)
 
-		// add worker if it doesn't exist
+		// // add worker if it doesn't exist
 		if err := c.deadMap.AddWorker(req.WorkerID); err != nil {
 			reply.Err = ErrInternal
 			ev.RespCh <- reply
 			return fmt.Errorf("failed on c.deadMap.AddWorker: %v", err)
 		}
 
-		j, err = c.JobQueue.GetJob()
+		j, err := c.JobQueue.GetJob()
 		if err != nil {
 			switch {
 			case err == ErrNoJob:
