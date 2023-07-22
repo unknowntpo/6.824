@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"hash/fnv"
 	"io/ioutil"
-	"log"
 	"net/rpc"
 	"os"
 	"path/filepath"
@@ -17,6 +16,7 @@ import (
 	"time"
 
 	uuid "github.com/google/uuid"
+	"github.com/rs/zerolog/log"
 )
 
 // Map functions return a slice of KeyValue.
@@ -173,13 +173,13 @@ type Worker struct {
 func (l *Worker) HeartBeat() {
 	timer := time.NewTicker(1 * time.Second)
 	for range timer.C {
-		l.logWorker("heart is beating")
+		l.LogInfo("heart is beating")
 	}
 }
 
 func (l *Worker) IsHealthy() bool { return true }
 func (l *Worker) Serve(ctx context.Context) error {
-	defer l.logWorker("worker Exit Serve")
+	defer l.LogInfo("worker Exit Serve")
 	heartBeatTimer := time.NewTicker(1 * time.Second)
 
 	//	deadTimer := time.NewTicker(6 * time.Second)
@@ -199,16 +199,16 @@ LOOP:
 				}
 			}
 		case <-timer.C:
-			l.logWorker("try to call get jobs")
+			l.LogInfo("try to call get jobs")
 			jobs, err := l.coMailBox.GetJobs(l.ID)
 			if err != nil {
 				switch {
 				case strings.Contains(err.Error(), ErrDone.Error()):
 					// All jobs are done, shutdown worker
-					l.logWorker("worker receive ErrDone")
+					l.LogInfo("worker receive ErrDone")
 					goto DONE
 				case strings.Contains(err.Error(), ErrNoJob.Error()):
-					l.logWorker("no job")
+					l.LogInfo("no job")
 					time.Sleep(100 * time.Millisecond)
 					goto LOOP
 				default:
@@ -217,7 +217,7 @@ LOOP:
 				}
 			}
 			if jobs == nil {
-				l.logWorker("no jobs")
+				l.LogInfo("no jobs")
 			}
 			if jobs != nil {
 				if err := l.handleJobs(ctx, jobs); err != nil {
@@ -225,15 +225,15 @@ LOOP:
 					case err == ErrDone:
 						goto DONE
 					default:
-						l.logWorker("%v", err)
+						l.LogInfo("%v", err)
 						goto LOOP
 					}
 				}
 			}
 		case err := <-errChan:
-			l.logWorker("error chan got something %v", err)
+			l.LogError("error chan got something %v", err)
 		case <-ctx.Done():
-			l.logWorker("ctx.Done")
+			l.LogInfo("ctx.Done")
 			return nil
 		}
 	}
@@ -245,7 +245,7 @@ DONE:
 
 func (l *Worker) complete() {
 	l.done.CompareAndSwap(false, true)
-	l.logWorker("all worker jobs are done")
+	l.LogInfo("all worker jobs are done")
 }
 
 func (l *Worker) Done() bool {
@@ -293,11 +293,14 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job) error {
 	for _, j := range jobs {
 		switch j.JobType {
 		case TYPE_MAP:
+			l.LogError("at TYPE_MAP, try to read:%v", j.FileName)
 			b, err := ioutil.ReadFile(j.FileName)
 			if err != nil {
 				// FIXME: multiple errors ?
 				return fmt.Errorf("failed to read file [%v]: %v", j.FileName, err)
 			}
+
+			l.LogError("at TYPE_MAP, finish reading: %v", j.FileName)
 
 			kvs := l.mapFn(j.FileName, string(b))
 			// intermediate file
@@ -305,13 +308,18 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job) error {
 				return ihash(key) % keyIHash(l.nReduce)
 			})
 
+			l.LogError("at TYPE_MAP, done generating kvsMap len: %v for file: %v", len(kvsMap), j.FileName)
+
 			for keyIHash, kvs := range kvsMap {
 				// format: map-<ihash(j.filename)>-<keyIHash>
 				fileName := filepath.Join(l.workDir, getIntermediateFileName(j.FileName, keyIHash))
+				l.LogError("at TYPE_MAP, try to write inter file: %v", fileName)
 				if err := l.writeKeyValuesToFile(fileName, kvs); err != nil {
 					return fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
 				}
+				l.LogError("at TYPE_MAP, done writting inter file: %v", fileName)
 			}
+			l.LogError("at TYPE_MAP, done writting inter file")
 		case TYPE_REDUCE:
 			// Open mr-*-j.ReduceNum
 			// mr-1291122704-4
@@ -342,7 +350,7 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job) error {
 				return fmt.Errorf("failed on l.coMailBox.FinishJob: %v", err)
 			}
 		}
-		l.logWorker("end of worker.handleJobs for %v", j.ID)
+		l.LogInfo("end of worker.handleJobs for %v", j.ID)
 	}
 	return nil
 }
@@ -518,6 +526,10 @@ func call(rpcname string, args interface{}, reply interface{}) error {
 	return nil
 }
 
-func (l *Worker) logWorker(format string, args ...interface{}) {
-	log.Printf(fmt.Sprintf("WORKER[%v]\t", l.ID)+format, args...)
+func (w *Worker) LogInfo(format string, args ...interface{}) {
+	log.Info().Msgf("Worker[]\t"+format, args...)
+}
+
+func (w *Worker) LogError(format string, args ...interface{}) {
+	log.Error().Msgf("Worker[]\t"+format, args...)
 }

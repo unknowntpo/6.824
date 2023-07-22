@@ -20,6 +20,9 @@ import (
 
 	"6.824/mr"
 	"6.824/utils"
+
+	"github.com/rs/zerolog"
+	zLog "github.com/rs/zerolog/log"
 )
 
 const nReduce = 8
@@ -30,6 +33,8 @@ func main() {
 		os.Exit(1)
 	}
 
+	zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+
 	mapf, reducef := loadPlugin(os.Args[1])
 
 	localWorker := mr.NewWorker(
@@ -39,6 +44,17 @@ func main() {
 		nReduce,
 		utils.GetWd(),
 	)
+
+	file, err := os.OpenFile(fmt.Sprintf("log-worker-%v.txt", localWorker.ID), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+	must(err)
+	defer file.Close()
+
+	multi := zerolog.MultiLevelWriter(os.Stderr, file)
+
+	logger := zerolog.New(multi).With().Timestamp().Logger()
+	// Set the global logger to use the configured logger
+	zLog.Logger = logger
+
 	go localWorker.Serve(context.Background())
 	for !localWorker.Done() {
 		time.Sleep(500 * time.Millisecond)
@@ -64,4 +80,10 @@ func loadPlugin(filename string) (func(string, string) []mr.KeyValue, func(strin
 	reducef := xreducef.(func(string, []string) string)
 
 	return mapf, reducef
+}
+
+func must(err error) {
+	if err != nil {
+		panic(err)
+	}
 }
