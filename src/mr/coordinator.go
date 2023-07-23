@@ -111,7 +111,7 @@ func (w *WorkerMap) GetJobsByWorkerID(workerID WorkerID) ([]Job, error) {
 	if !ok {
 		return nil, fmt.Errorf("worker [%v] does not exist")
 	}
-	jobs := make([]Job, len(jobsMap))
+	jobs := make([]Job, 0, len(jobsMap))
 	for _, j := range jobsMap {
 		jobs = append(jobs, j)
 	}
