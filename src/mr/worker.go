@@ -168,6 +168,7 @@ type Worker struct {
 	reduceFn  ReduceFn
 	workDir   string
 	done      atomic.Bool
+	errChan   chan error
 }
 
 func (l *Worker) HeartBeat() {
@@ -177,27 +178,38 @@ func (l *Worker) HeartBeat() {
 	}
 }
 
-func (l *Worker) IsHealthy() bool { return true }
-func (l *Worker) Serve(ctx context.Context) error {
-	defer l.LogInfo("worker Exit Serve")
-	heartBeatTimer := time.NewTicker(1 * time.Second)
-
-	//	deadTimer := time.NewTicker(6 * time.Second)
-	timer := time.NewTicker(1 * time.Microsecond)
-	errChan := make(chan error, 30)
-
-LOOP:
+func (l *Worker) markHealthy(ctx context.Context) {
+	heartBeatTimer := time.NewTicker(10 * time.Millisecond)
 	for {
 		select {
 		case <-heartBeatTimer.C:
 			if err := l.coMailBox.MarkHealthy(l.ID); err != nil {
 				switch {
 				case err == ErrDone:
-					goto DONE
+					return
 				default:
-					errChan <- err
+					l.errChan <- err
 				}
 			}
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (l *Worker) IsHealthy() bool { return true }
+func (l *Worker) Serve(ctx context.Context) error {
+	ctx, cancel := context.WithCancel(ctx)
+	defer l.LogInfo("worker Exit Serve")
+
+	//	deadTimer := time.NewTicker(6 * time.Second)
+	timer := time.NewTicker(1 * time.Microsecond)
+	errChan := make(chan error, 30)
+
+	go l.markHealthy(ctx)
+LOOP:
+	for {
+		select {
 		case <-timer.C:
 			l.LogInfo("try to call get jobs")
 			jobs, err := l.coMailBox.GetJobs(l.ID)
@@ -233,12 +245,11 @@ LOOP:
 		case err := <-errChan:
 			l.LogError("error chan got something %v", err)
 		case <-ctx.Done():
-			l.LogInfo("ctx.Done")
-			return nil
+			goto DONE
 		}
 	}
-
 DONE:
+	cancel()
 	l.complete()
 	return nil
 }
@@ -293,14 +304,14 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job) error {
 	for _, j := range jobs {
 		switch j.JobType {
 		case TYPE_MAP:
-			l.LogError("at TYPE_MAP, try to read:%v", j.FileName)
+			// l.LogError("at TYPE_MAP, try to read:%v", j.FileName)
 			b, err := ioutil.ReadFile(j.FileName)
 			if err != nil {
 				// FIXME: multiple errors ?
 				return fmt.Errorf("failed to read file [%v]: %v", j.FileName, err)
 			}
 
-			l.LogError("at TYPE_MAP, finish reading: %v", j.FileName)
+			// l.LogError("at TYPE_MAP, finish reading: %v", j.FileName)
 
 			kvs := l.mapFn(j.FileName, string(b))
 			// intermediate file
@@ -308,18 +319,18 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job) error {
 				return ihash(key) % keyIHash(l.nReduce)
 			})
 
-			l.LogError("at TYPE_MAP, done generating kvsMap len: %v for file: %v", len(kvsMap), j.FileName)
+			// l.LogError("at TYPE_MAP, done generating kvsMap len: %v for file: %v", len(kvsMap), j.FileName)
 
 			for keyIHash, kvs := range kvsMap {
 				// format: map-<ihash(j.filename)>-<keyIHash>
 				fileName := filepath.Join(l.workDir, getIntermediateFileName(j.FileName, keyIHash))
-				l.LogError("at TYPE_MAP, try to write inter file: %v", fileName)
+				// l.LogError("at TYPE_MAP, try to write inter file: %v", fileName)
 				if err := l.writeKeyValuesToFile(fileName, kvs); err != nil {
 					return fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
 				}
-				l.LogError("at TYPE_MAP, done writting inter file: %v", fileName)
+				// l.LogError("at TYPE_MAP, done writting inter file: %v", fileName)
 			}
-			l.LogError("at TYPE_MAP, done writting inter file")
+			// l.LogError("at TYPE_MAP, done writting inter file")
 		case TYPE_REDUCE:
 			// Open mr-*-j.ReduceNum
 			// mr-1291122704-4
@@ -386,6 +397,7 @@ func getIntermediateFileName(fileName string, keyIHash keyIHash) string {
 }
 
 func (l *Worker) writeKeyValuesToFile(fileName string, kvs []KeyValue) error {
+	os.Remove(fileName)
 	f, err := os.OpenFile(fileName, os.O_RDWR|os.O_CREATE, 0644)
 	defer f.Close()
 	if err != nil {

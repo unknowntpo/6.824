@@ -310,6 +310,9 @@ func (c *Coordinator) doMapReduce(mapJobs []Job, reduceJobs []Job) error {
 		}
 	}
 
+	ctx, cancel := context.WithCancel(context.Background())
+	go c.monitor(ctx)
+
 	if err := c.schedule(mapJobs, PHASE_MAP); err != nil {
 		return fmt.Errorf("failed on c.schedule for PHASE_MAP: %v", err)
 	}
@@ -332,6 +335,9 @@ func (c *Coordinator) doMapReduce(mapJobs []Job, reduceJobs []Job) error {
 
 	c.ChangePhase(PHASE_DONE)
 
+	c.LogInfo("now, phase is PHASE_DONE")
+
+	cancel()
 	c.JobQueue.Stop()
 	close(c.healthCh)
 	close(c.jobEventCh)
@@ -360,12 +366,13 @@ func (c *Coordinator) schedule(jobs []Job, phase Phase) error {
 	}
 	// init control data structure
 	c.deadMap = deadMap{}
+	// c.healthCh = make(chan HealthEvent, 10)
 
 	c.LogInfo("XXX c.workerMap", debug(c.workerMap.String()))
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	go c.monitor(ctx)
+	// go c.monitor(ctx)
 
 	go func() {
 		switch phase {
@@ -588,10 +595,11 @@ func (c *Coordinator) Serve() {
 }
 
 func (c *Coordinator) monitor(ctx context.Context) {
-	ticker := time.NewTicker(1 * time.Second)
+	ticker := time.NewTicker(1000 * time.Millisecond)
 	for {
 		select {
 		case <-ctx.Done():
+			c.LogError("AAA exit monitor")
 			return
 		case <-ticker.C:
 			// create checkWorkerAliveness event
@@ -600,6 +608,7 @@ func (c *Coordinator) monitor(ctx context.Context) {
 				Type:   EVENT_CHECK_HEALTHY,
 				RespCh: make(chan any),
 			}
+			c.LogError("AAA try to CheckHealthy")
 			c.healthCh <- ev
 			respInt := <-ev.RespCh
 			resp, ok := respInt.(CheckHealthyReply)
@@ -621,7 +630,7 @@ func (c *Coordinator) syncWorkerAliveness() error {
 	c.LogInfo("checkWorkerAliveness")
 	for workerID, isDead := range c.deadMap {
 		if isDead {
-			c.LogInfo("worker[%v] is dead", workerID)
+			c.LogError("worker[%v] is dead", workerID)
 			// get all job of that worker in c.workerMap, ressign them to jobQueue
 			jobs, err := c.workerMap.GetJobsByWorkerID(workerID)
 			if err != nil {
