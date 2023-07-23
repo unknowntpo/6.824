@@ -527,9 +527,9 @@ func call(rpcname string, args interface{}, reply interface{}) error {
 }
 
 func (w *Worker) LogInfo(format string, args ...interface{}) {
-	log.Info().Msgf("Worker[]\t"+format, args...)
+	log.Info().Msgf(fmt.Sprintf("Worker[%v]\t", w.ID)+format, args...)
 }
 
 func (w *Worker) LogError(format string, args ...interface{}) {
-	log.Error().Msgf("Worker[]\t"+format, args...)
+	log.Error().Msgf(fmt.Sprintf("Worker[%v]\t", w.ID)+format, args...)
 }
