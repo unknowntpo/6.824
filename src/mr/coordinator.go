@@ -561,64 +561,6 @@ func (c *Coordinator) handleJobEvent(ev JobEvent) error {
 	return nil
 }
 
-func (c *Coordinator) WordCount(args *WordCountArgs, reply *WordCountReply) error {
-	c.ChangePhase(PHASE_MAP)
-
-	mapJobs := make([]Job, 0, len(args.FileNames))
-
-	c.mapJobWaitGroup.Add(len(args.FileNames))
-
-	for _, fileName := range args.FileNames {
-		// assign job for every file
-		job := NewJob(fileName, TYPE_MAP)
-		if err := c.JobQueue.Submit(job); err != nil {
-			return err
-		}
-		c.LogInfo("length of jobs: %v", c.JobQueue.NumOfJobs())
-		mapJobs = append(mapJobs, job)
-	}
-
-	c.WaitForMap()
-
-	c.LogInfo("all map jobs are done")
-
-	c.LogInfo("try to change phase")
-	c.ChangePhase(PHASE_REDUCE)
-
-	c.reduceJobWaitGroup.Add(c.nReduce)
-
-	for reduceNum := 0; reduceNum < c.nReduce; reduceNum++ {
-		j := Job{
-			ID:        NewJobID(),
-			JobType:   TYPE_REDUCE,
-			ReduceNum: reduceNum,
-		}
-		// reuse same job
-		if err := c.JobQueue.Submit(j); err != nil {
-			return err
-		}
-	}
-
-	c.WaitForReduce()
-
-	c.ChangePhase(PHASE_DONE)
-
-	c.JobQueue.Stop()
-
-	c.LogInfo("all jobs are done")
-
-	time.Sleep(3 * time.Second)
-
-	// Wait for all worker to die
-	for !c.Done() {
-		c.LogInfo("in wordcount: not done")
-		c.LogInfo("workers num: %v", c.workerMap.NumOfWorker())
-		time.Sleep(100 * time.Millisecond)
-	}
-
-	return nil
-}
-
 func (c *Coordinator) ChangePhase(desiredPhase Phase) {
 	c.phaseMu.Lock()
 	defer c.phaseMu.Unlock()
