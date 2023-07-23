@@ -46,7 +46,9 @@ func main() {
 	)
 
 	file, err := os.OpenFile(fmt.Sprintf("log-worker-%v.txt", localWorker.ID), os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
-	must(err)
+	if err != nil {
+		panic(err)
+	}
 	defer file.Close()
 
 	multi := zerolog.MultiLevelWriter(os.Stderr, file)
@@ -80,10 +82,4 @@ func loadPlugin(filename string) (func(string, string) []mr.KeyValue, func(strin
 	reducef := xreducef.(func(string, []string) string)
 
 	return mapf, reducef
-}
-
-func must(err error) {
-	if err != nil {
-		panic(err)
-	}
 }
