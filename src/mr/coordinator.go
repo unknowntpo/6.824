@@ -109,7 +109,7 @@ func (w *WorkerMap) GetJobsByWorkerID(workerID WorkerID) ([]Job, error) {
 	defer w.mu.Unlock()
 	jobsMap, ok := w.m[workerID]
 	if !ok {
-		return nil, fmt.Errorf("worker [%v] does not exist")
+		return nil, fmt.Errorf("worker [%v] does not exist", workerID)
 	}
 	jobs := make([]Job, 0, len(jobsMap))
 	for _, j := range jobsMap {
@@ -148,6 +148,7 @@ func must(err error) {
 func (m *WorkerMap) AddJob(j Job, workerID WorkerID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	jobsForWorker, ok := m.m[workerID]
 	if !ok {
 		// it's new worker
@@ -160,6 +161,7 @@ func (m *WorkerMap) AddJob(j Job, workerID WorkerID) error {
 	// Job Not Found
 	jobsForWorker[j.ID] = j
 	m.m[workerID] = jobsForWorker
+
 	return nil
 }
 
@@ -245,7 +247,6 @@ func (c *Coordinator) Example(args *ExampleArgs, reply *ExampleReply) error {
 // FIXME: Tidy up error return flow
 // Where should we put error ?
 func (c *Coordinator) MarkHealthy(args *MarkHealthyArgs, reply *MarkHealthyReply) error {
-	c.LogInfo("MarkHealthy is called for workerID: %v, ReqID: %v", args.WorkerID, args.ReqID)
 	if c.PhaseIs(PHASE_DONE) {
 		reply.Err = ErrDone
 		c.workerMap.RemoveWorker(args.WorkerID)
@@ -262,7 +263,6 @@ func (c *Coordinator) MarkHealthy(args *MarkHealthyArgs, reply *MarkHealthyReply
 	c.healthCh <- ev
 	resp := <-ev.RespCh
 	*reply = resp.(MarkHealthyReply)
-	c.LogInfo("healthy is marked: %v", c.deadMap.String())
 	return nil
 }
 
@@ -296,6 +296,7 @@ func (c *Coordinator) NewWordCount(args *WordCountArgs, reply *WordCountReply) e
 		}
 		reduceJobs = append(reduceJobs, j)
 	}
+
 	must(c.doMapReduce(mapJobs, reduceJobs))
 	return nil
 }
@@ -387,6 +388,19 @@ func (c *Coordinator) schedule(jobs []Job, phase Phase) error {
 		c.LogInfo("YYY waitgroup existed for %v", phase)
 	}()
 
+	errChan := make(chan error, 10)
+
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case err := <-errChan:
+				c.LogError("err Chan got error: %v", err)
+			}
+		}
+	}()
+
 	c.LogInfo("in schedule for %v", phase)
 	for {
 		select {
@@ -397,10 +411,12 @@ func (c *Coordinator) schedule(jobs []Job, phase Phase) error {
 			}
 			c.LogInfo("got event: %#v", ev)
 			if err := c.handleJobEvent(ev); err != nil {
-				return fmt.Errorf("failed on c.handleJobEvent: %v", err)
+				errChan <- fmt.Errorf("failed on c.handleJobEvent: %v", err)
 			}
 		case ev := <-c.healthCh:
-			c.handleHealthCheck(ev)
+			if err := c.handleHealthCheck(ev); err != nil {
+				errChan <- fmt.Errorf("failed on c.handleHealthCheck: %v", err)
+			}
 		case <-ctx.Done():
 			return nil
 		}
@@ -419,7 +435,6 @@ func (c *Coordinator) handleHealthCheck(ev HealthEvent) error {
 	switch ev.Type {
 	case EVENT_MARK_HEALTHY:
 		args, ok := ev.Req.(MarkHealthyArgs)
-		c.LogInfo("handleHealthCheck is called for %v", args.ReqID)
 		reply := MarkHealthyReply{}
 		if !ok {
 			reply.Err = ErrInternal
@@ -446,7 +461,6 @@ func (c *Coordinator) handleHealthCheck(ev HealthEvent) error {
 	default:
 		panic("unexpected event type")
 	}
-	c.LogInfo("handleHealthCheck is called")
 	return nil
 }
 
@@ -494,8 +508,6 @@ func (c *Coordinator) handleJobEvent(ev JobEvent) error {
 			ev.RespCh <- ErrInternal
 			return fmt.Errorf("wrong type on req, got %T, want %T", req, GetJobsArgs{})
 		}
-		c.LogError("KKK handle get job event for worker %v, req: %v", req.WorkerID, req.ReqID)
-
 		// // add worker if it doesn't exist
 		if err := c.deadMap.AddWorker(req.WorkerID); err != nil {
 			reply.Err = ErrInternal
@@ -507,13 +519,6 @@ func (c *Coordinator) handleJobEvent(ev JobEvent) error {
 		if err != nil {
 			switch {
 			case err == ErrNoJob:
-				c.LogInfo("XX no job jobqueue length: %v", len(c.JobQueue.ch))
-				// c.LogInfo("XX no job workerMap length: %v", c.workerMap.String())
-
-				fmt.Println(c.workerMap.String())
-
-				fmt.Println("deadMap", c.deadMap.String())
-
 				reply = GetJobsReply{}
 				reply.Err = ErrNoJob
 				ev.RespCh <- reply
@@ -599,7 +604,6 @@ func (c *Coordinator) monitor(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
-			c.LogError("AAA exit monitor")
 			return
 		case <-ticker.C:
 			// create checkWorkerAliveness event
@@ -608,7 +612,6 @@ func (c *Coordinator) monitor(ctx context.Context) {
 				Type:   EVENT_CHECK_HEALTHY,
 				RespCh: make(chan any),
 			}
-			c.LogError("AAA try to CheckHealthy")
 			c.healthCh <- ev
 			respInt := <-ev.RespCh
 			resp, ok := respInt.(CheckHealthyReply)
@@ -630,7 +633,7 @@ func (c *Coordinator) syncWorkerAliveness() error {
 	c.LogInfo("checkWorkerAliveness")
 	for workerID, isDead := range c.deadMap {
 		if isDead {
-			c.LogError("worker[%v] is dead", workerID)
+			c.LogInfo("worker[%v] is dead", workerID)
 			// get all job of that worker in c.workerMap, ressign them to jobQueue
 			jobs, err := c.workerMap.GetJobsByWorkerID(workerID)
 			if err != nil {
@@ -638,6 +641,8 @@ func (c *Coordinator) syncWorkerAliveness() error {
 			}
 			c.workerMap.RemoveWorker(workerID)
 			c.deadMap.RemoveWorker(workerID)
+			// no need to remove worker from deadmap
+			// because maybe there's some late request are gonna add it back
 			if err := c.JobQueue.BatchSubmit(jobs); err != nil {
 				errSlice = append(errSlice, fmt.Errorf("failed on c.JobQueue.BatchSubmit for worker[%v]: %v", workerID, err))
 			}
@@ -647,8 +652,6 @@ func (c *Coordinator) syncWorkerAliveness() error {
 			// set it back to false
 		}
 	}
-	c.LogInfo("liveness: %v", c.deadMap)
-	c.LogInfo("ZZZ len of jobqueue: %v", len(c.JobQueue.ch))
 	if len(errSlice) != 0 {
 		var err error
 		for _, e := range errSlice {
@@ -851,7 +854,6 @@ func (r *RPCMailBox) GetJobs(workerID WorkerID) ([]Job, error) {
 			return nil, fmt.Errorf("failed on rpc call [%v]: %v", rpcName, err)
 		}
 	}
-	fmt.Printf("GetJobs for worker is done, Req:[%v], workerID:[%v]\n", args.ReqID, args.WorkerID)
 	return reply.Jobs, nil
 }
 
@@ -879,7 +881,6 @@ func (r *RPCMailBox) MarkHealthy(workerID WorkerID) error {
 	rpcName := "Coordinator.MarkHealthy"
 	args := MarkHealthyArgs{WorkerID: workerID, ReqID: NewReqID()}
 	reply := MarkHealthyReply{}
-	fmt.Printf("RPCMailBox: calling MarkHealthy for worker[%v], req:[%v]\n", workerID, args.ReqID)
 	if err := callWithRetry(rpcName, &args, &reply); err != nil {
 		switch {
 		case err == ErrDone:

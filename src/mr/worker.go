@@ -289,6 +289,7 @@ func (l *Worker) doReduce(j Job, kvs []KeyValue) error {
 		for k := i; k < j; k++ {
 			values = append(values, kvs[k].Value)
 		}
+
 		output := l.reduceFn(kvs[i].Key, values)
 
 		// this is the correct format for each line of Reduce output.
@@ -304,14 +305,11 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job) error {
 	for _, j := range jobs {
 		switch j.JobType {
 		case TYPE_MAP:
-			// l.LogError("at TYPE_MAP, try to read:%v", j.FileName)
 			b, err := ioutil.ReadFile(j.FileName)
 			if err != nil {
 				// FIXME: multiple errors ?
 				return fmt.Errorf("failed to read file [%v]: %v", j.FileName, err)
 			}
-
-			// l.LogError("at TYPE_MAP, finish reading: %v", j.FileName)
 
 			kvs := l.mapFn(j.FileName, string(b))
 			// intermediate file
@@ -319,18 +317,13 @@ func (l *Worker) handleJobs(ctx context.Context, jobs []Job) error {
 				return ihash(key) % keyIHash(l.nReduce)
 			})
 
-			// l.LogError("at TYPE_MAP, done generating kvsMap len: %v for file: %v", len(kvsMap), j.FileName)
-
 			for keyIHash, kvs := range kvsMap {
 				// format: map-<ihash(j.filename)>-<keyIHash>
 				fileName := filepath.Join(l.workDir, getIntermediateFileName(j.FileName, keyIHash))
-				// l.LogError("at TYPE_MAP, try to write inter file: %v", fileName)
 				if err := l.writeKeyValuesToFile(fileName, kvs); err != nil {
 					return fmt.Errorf("failed on writeKeyValuesToFile: %v", err)
 				}
-				// l.LogError("at TYPE_MAP, done writting inter file: %v", fileName)
 			}
-			// l.LogError("at TYPE_MAP, done writting inter file")
 		case TYPE_REDUCE:
 			// Open mr-*-j.ReduceNum
 			// mr-1291122704-4
