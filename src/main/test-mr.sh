@@ -64,7 +64,7 @@ failed_any=0
 sort mr-out-0 >mr-correct-wc.txt
 rm -f mr-out*
 
-# : <<'COMMENT'
+#  : <<'COMMENT'
 
 echo '***' Starting wc test.
 
