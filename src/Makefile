@@ -6,6 +6,13 @@ help:
 
 TMP_DIR = ./main/mr-tmp
 
+TEST ?=
+ifeq ($(TEST),)
+		TESTFLAG :=
+else
+		TESTFLAG := -run=$(TEST)
+endif
+
 ## mr/build/seq: build map-reduce https://pdos.csail.mit.edu/6.824/labs/lab-mr.html
 .PHONY: mr/build/seq
 mr/build/seq: mr/build/plugin
@@ -20,6 +27,10 @@ mr/build/seq: mr/build/plugin
 ## mr/test/once: run main/test-mr.sh
 mr/test/once:
 	cd main && bash test-mr.sh
+
+## rf/test: run raft tests
+rf/test:
+	go test -v -race ./raft $(TESTFLAG)
 
 FOCUS ?=
 ifeq ($(FOCUS),)
