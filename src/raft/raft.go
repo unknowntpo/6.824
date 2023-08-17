@@ -19,15 +19,18 @@ package raft
 
 import (
 	//	"bytes"
+	crand "crypto/rand"
 	"errors"
 	"fmt"
-	"log"
+	"math/big"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	//	"6.824/labgob"
 	"6.824/labrpc"
+
+	"github.com/rs/zerolog/log"
 )
 
 // as each Raft peer becomes aware that successive log entries are
@@ -62,8 +65,8 @@ type Raft struct {
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
-	state       int64
-	currentTerm int64
+	state       int
+	currentTerm int
 	votedFor    int
 
 	electionTicker *time.Ticker
@@ -74,21 +77,26 @@ type Raft struct {
 
 const (
 	votedForNull int = -1
+	termInit     int = 0
 )
 
 const (
-	STATE_LEADER int64 = iota
+	STATE_FOLLOWER int = iota
 	STATE_CANDIDATE
-	STATE_FOLLOWER
+	STATE_LEADER
 )
 
 // return currentTerm and whether this server
 // believes it is the leader.
 func (rf *Raft) GetState() (int, bool) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
 	// Your code here (2A).
-	term := atomic.LoadInt64(&rf.currentTerm)
-	state := atomic.LoadInt64(&rf.state)
-	return int(term), state == STATE_LEADER
+	return int(rf.currentTerm), rf.state == STATE_LEADER
+}
+
+func (rf *Raft) stateIs(state int) bool {
+	return rf.state == state
 }
 
 // save Raft's persistent state to stable storage,
@@ -103,6 +111,14 @@ func (rf *Raft) persist() {
 	// e.Encode(rf.yyy)
 	// data := w.Bytes()
 	// rf.persister.SaveRaftState(data)
+}
+
+func (rf *Raft) LogInfo(format string, args ...interface{}) {
+	log.Info().Msgf(fmt.Sprintf("Raft[%v]: ", rf.me)+format, args...)
+}
+
+func (rf *Raft) LogError(format string, args ...interface{}) {
+	log.Error().Msgf(fmt.Sprintf("Worker[%v]: ", rf.me)+format, args...)
 }
 
 // restore previously persisted state.
@@ -171,14 +187,17 @@ type RequestVoteReply struct {
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
-	rf.electionTicker.Reset(electionTimeout)
-	if rf.currentTerm > int64(args.Term) {
-		log.Println("you are not leader")
+
+	rf.LogInfo("handle AppendEntries request for srv: %v", rf.me)
+	if rf.currentTerm > args.Term {
+		rf.LogError("you are not leader")
 		reply.Success = false
+		return
 	}
-	rf.currentTerm = int64(args.Term)
+	rf.currentTerm = args.Term
 
 	reply.Success = true
+	rf.electionTicker.Reset(electionTimeout)
 }
 
 // example RequestVote RPC handler.
@@ -186,6 +205,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// Your code here (2A, 2B).
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+
+	rf.LogInfo("in RequestVote for req from srv: %v", args.CandidateID)
 
 	if rf.stateIs(STATE_LEADER) || rf.stateIs(STATE_CANDIDATE) {
 		reply.VoteGranted = false
@@ -198,18 +219,20 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		return
 	}
 
-	// $5.2, $5.4
-	if rf.votedFor == votedForNull && rf.logIsUpToDateAsCandidate() {
-		reply.VoteGranted = true
-		reply.Term = int(rf.currentTerm)
-		rf.votedFor = args.CandidateID
-		return
-	}
-
 	if rf.votedFor != votedForNull && rf.votedFor != args.CandidateID {
 		// we've already chosen a leader
 		reply.VoteGranted = false
 		reply.Term = int(rf.currentTerm)
+		return
+	}
+
+	// $5.2, $5.4
+	if rf.votedFor == votedForNull && rf.logIsUpToDateAsCandidate() {
+		rf.LogInfo("voted for %v", args.CandidateID)
+		reply.VoteGranted = true
+		reply.Term = int(rf.currentTerm)
+		rf.votedFor = args.CandidateID
+		rf.electionTicker.Reset(electionTimeout)
 		return
 	}
 }
@@ -298,11 +321,8 @@ func (rf *Raft) killed() bool {
 }
 
 func (rf *Raft) isLeader() bool {
-	return rf.stateIs(STATE_LEADER)
-}
-
-func (rf *Raft) stateIs(st int64) bool {
-	return st == rf.state
+	_, isLeader := rf.GetState()
+	return isLeader
 }
 
 var (
@@ -311,6 +331,7 @@ var (
 )
 
 func (rf *Raft) handleHealthcheck() error {
+	rf.LogInfo("in handleHealthcheck")
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
@@ -324,53 +345,74 @@ func (rf *Raft) handleHealthcheck() error {
 			log.Printf("failed on rf.sendRequestVote to server %v: %v\n", srv, ErrFailedRPCCall)
 			continue
 		}
+		rf.LogInfo("sent AppendEntries to srv %v", srv)
 	}
+
+	rf.electionTicker.Reset(electionTimeout)
+
 	return nil
 }
 
 // See raft paper Figure 2: Rules for servers
 // https://pdos.csail.mit.edu/6.824/papers/raft-extended.pdf
 func (rf *Raft) handleElection() error {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
+	rf.LogInfo("in handleElection")
 	if !rf.stateIs(STATE_FOLLOWER) {
 		return fmt.Errorf("wrong state")
 	}
 
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
-
+	rf.state = STATE_CANDIDATE
 	rf.currentTerm += 1
 
-	voteCnt := 0
+	// vote for themselves
+	rf.votedFor = rf.me
+	voteCnt := 1
+
 	for srv := range rf.peers {
-		// peer.Call()
-		args := RequestVoteArgs{}
+		if srv == rf.me {
+			continue
+		}
+		args := RequestVoteArgs{Term: rf.currentTerm, CandidateID: rf.me}
 		reply := RequestVoteReply{}
 		if ok := rf.sendRequestVote(srv, &args, &reply); !ok {
-			log.Printf("failed on rf.sendRequestVote to server %v: %v\n", srv, ErrFailedRPCCall)
+			rf.LogInfo("failed on rf.sendRequestVote to server %v: %v", srv, ErrFailedRPCCall)
 		}
 		if reply.VoteGranted {
 			voteCnt++
 		}
 	}
 	if voteCnt > len(rf.peers)/2 {
+		rf.LogInfo("I am leader now")
 		rf.state = STATE_LEADER
 	}
 	return nil
 }
 
-var electionTimeout = 1 * time.Second
-var healthCheckDuration = 500 * time.Millisecond
+var electionTimeout = 2 * time.Second
+var healthCheckDuration = 10 * time.Millisecond
+
+func getRand() time.Duration {
+	maxms := big.NewInt(1000 * 2)
+	ms, _ := crand.Int(crand.Reader, maxms)
+	return time.Duration(ms.Int64()) * time.Millisecond
+}
 
 // The ticker go routine starts a new election if this peer hasn't received
 // heartsbeats recently.
 func (rf *Raft) ticker() {
-	rf.electionTicker = time.NewTicker(electionTimeout)
+	// duration := electionTimeout + getRand()
+	duration := electionTimeout
+	// rf.LogInfo("duration: %v", duration)
+	rf.electionTicker = time.NewTicker(duration)
 	rf.healthTicker = time.NewTicker(healthCheckDuration)
 
 	for rf.killed() == false {
+		time.Sleep(getRand())
 		select {
 		case <-rf.electionTicker.C:
-			// become candidate
 			rf.handleElection()
 		case <-rf.healthTicker.C:
 			// if it's not leader, break
@@ -384,7 +426,7 @@ func (rf *Raft) ticker() {
 		// Your code here to check if a leader election should
 		// be started and to randomize sleeping time using
 		// time.Sleep().
-		time.Sleep(30 * time.Millisecond)
+		// time.Sleep(30 * time.Millisecond)
 	}
 }
 
@@ -404,6 +446,24 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.persister = persister
 	rf.me = me
 	rf.votedFor = votedForNull
+	rf.state = STATE_FOLLOWER
+	rf.currentTerm = termInit
+
+	/*
+		fName := fmt.Sprintf("log-raft-%v.txt", rf.me)
+		os.Remove(fName)
+		file, err := os.OpenFile(fName, os.O_WRONLY|os.O_CREATE|os.O_APPEND, 0666)
+		if err != nil {
+			panic(err)
+		}
+		defer file.Close()
+
+		// multi := zerolog.MultiLevelWriter(os.Stderr, file)
+
+		logger := zerolog.New(multi).With().Timestamp().Logger()
+		// Set the global logger to use the configured logger
+		log.Logger = logger
+	*/
 
 	// Your initialization code here (2A, 2B, 2C).
 
