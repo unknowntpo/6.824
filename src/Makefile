@@ -30,7 +30,7 @@ mr/test/once:
 
 ## rf/test: run raft tests
 rf/test:
-	go test -v -race ./raft $(TESTFLAG)
+	go test -v -race -count=1 ./raft $(TESTFLAG)
 
 FOCUS ?=
 ifeq ($(FOCUS),)

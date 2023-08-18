@@ -118,7 +118,7 @@ func (rf *Raft) LogInfo(format string, args ...interface{}) {
 }
 
 func (rf *Raft) LogError(format string, args ...interface{}) {
-	log.Error().Msgf(fmt.Sprintf("Worker[%v]: ", rf.me)+format, args...)
+	log.Error().Msgf(fmt.Sprintf("Raft[%v]: ", rf.me)+format, args...)
 }
 
 // restore previously persisted state.
@@ -160,6 +160,7 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 }
 
 type AppendEntriesArgs struct {
+	LeaderID int
 	// Term is the term of leader
 	Term int
 }
@@ -188,7 +189,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	rf.LogInfo("handle AppendEntries request for srv: %v", rf.me)
+	rf.LogInfo("handle AppendEntries request for leader: %v", args.LeaderID)
 	if rf.currentTerm > args.Term {
 		rf.LogError("you are not leader")
 		reply.Success = false
@@ -233,6 +234,9 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.Term = int(rf.currentTerm)
 		rf.votedFor = args.CandidateID
 		rf.electionTicker.Reset(electionTimeout)
+		rf.currentTerm = args.Term
+		rf.LogInfo("my currentTerm: %v", rf.currentTerm)
+
 		return
 	}
 }
@@ -331,26 +335,42 @@ var (
 )
 
 func (rf *Raft) handleHealthcheck() error {
-	rf.LogInfo("in handleHealthcheck")
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	// send ApplyMsg to all peers
-	for srv := range rf.peers {
-		// peer.Call()
-		args := AppendEntriesArgs{Term: int(rf.currentTerm)}
+	rf.LogInfo("in handleHealthcheck")
+
+	f := func(srvID int, wg *sync.WaitGroup) {
+		defer wg.Done()
+
+		args := AppendEntriesArgs{LeaderID: rf.me, Term: int(rf.currentTerm)}
 		reply := AppendEntriesReply{}
-		if ok := rf.sendAppendEntries(srv, &args, &reply); !ok {
+		rf.LogInfo("try to AppendEntries to srv %v", srvID)
+		if ok := rf.sendAppendEntries(srvID, &args, &reply); !ok {
 			// this peer may dead
-			log.Printf("failed on rf.sendRequestVote to server %v: %v\n", srv, ErrFailedRPCCall)
-			continue
+			log.Printf("failed on rf.sendRequestVote to server %v: %v\n", srvID, ErrFailedRPCCall)
+			return
 		}
-		rf.LogInfo("sent AppendEntries to srv %v", srv)
+		rf.LogInfo("sent AppendEntries to srv %v", srvID)
 	}
+	rf.forAllPeersExceptMe(f)
+	rf.LogInfo("Done handleHealthcheck")
 
 	rf.electionTicker.Reset(electionTimeout)
 
 	return nil
+}
+
+func (rf *Raft) forAllPeersExceptMe(f func(srvID int, wg *sync.WaitGroup)) {
+	var wg sync.WaitGroup
+	for srv := range rf.peers {
+		if srv == rf.me {
+			continue
+		}
+		wg.Add(1)
+		go f(srv, &wg)
+	}
+	wg.Wait()
 }
 
 // See raft paper Figure 2: Rules for servers
@@ -369,30 +389,36 @@ func (rf *Raft) handleElection() error {
 
 	// vote for themselves
 	rf.votedFor = rf.me
-	voteCnt := 1
+	var voteCnt int64 = 1
 
-	for srv := range rf.peers {
-		if srv == rf.me {
-			continue
-		}
+	f := func(srvID int, wg *sync.WaitGroup) {
+		defer wg.Done()
+
 		args := RequestVoteArgs{Term: rf.currentTerm, CandidateID: rf.me}
 		reply := RequestVoteReply{}
-		if ok := rf.sendRequestVote(srv, &args, &reply); !ok {
-			rf.LogInfo("failed on rf.sendRequestVote to server %v: %v", srv, ErrFailedRPCCall)
+		if ok := rf.sendRequestVote(srvID, &args, &reply); !ok {
+			rf.LogInfo("failed on rf.sendRequestVote to server %v: %v", srvID, ErrFailedRPCCall)
 		}
 		if reply.VoteGranted {
-			voteCnt++
+			atomic.AddInt64(&voteCnt, 1)
 		}
 	}
-	if voteCnt > len(rf.peers)/2 {
+
+	rf.forAllPeersExceptMe(f)
+
+	if int(voteCnt) > len(rf.peers)/2 {
 		rf.LogInfo("I am leader now")
 		rf.state = STATE_LEADER
+		rf.electionTicker.Reset(electionTimeout)
+	} else {
+		rf.LogInfo("I lose the election")
+		rf.state = STATE_FOLLOWER
 	}
 	return nil
 }
 
-var electionTimeout = 2 * time.Second
-var healthCheckDuration = 10 * time.Millisecond
+var electionTimeout = 1 * time.Second
+var healthCheckDuration = 100 * time.Millisecond
 
 func getRand() time.Duration {
 	maxms := big.NewInt(1000 * 2)
@@ -403,20 +429,20 @@ func getRand() time.Duration {
 // The ticker go routine starts a new election if this peer hasn't received
 // heartsbeats recently.
 func (rf *Raft) ticker() {
-	// duration := electionTimeout + getRand()
-	duration := electionTimeout
+	// use random timeout to prevent all raft instance to become candidate in the smae time
+	duration := electionTimeout + getRand()
 	// rf.LogInfo("duration: %v", duration)
 	rf.electionTicker = time.NewTicker(duration)
 	rf.healthTicker = time.NewTicker(healthCheckDuration)
 
 	for rf.killed() == false {
-		time.Sleep(getRand())
 		select {
 		case <-rf.electionTicker.C:
 			rf.handleElection()
 		case <-rf.healthTicker.C:
 			// if it's not leader, break
 			if !rf.isLeader() {
+				// rf.LogInfo("break")
 				break
 			}
 			if err := rf.handleHealthcheck(); err != nil {
