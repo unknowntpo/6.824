@@ -196,6 +196,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		return
 	}
 	rf.currentTerm = args.Term
+	// we need to reset rf.voteFor to null, or in next election,
+	// we can't vote for anyone except old votee.
+	rf.votedFor = votedForNull
 
 	reply.Success = true
 	rf.electionTicker.Reset(electionTimeout)
