@@ -114,11 +114,11 @@ func (rf *Raft) persist() {
 }
 
 func (rf *Raft) LogInfo(format string, args ...interface{}) {
-	log.Info().Msgf(fmt.Sprintf("Raft[%v]: ", rf.me)+format, args...)
+	log.Info().Msgf(fmt.Sprintf("Raft[%v]state[%v]term(%v): ", rf.me, rf.state, rf.currentTerm)+format, args...)
 }
 
 func (rf *Raft) LogError(format string, args ...interface{}) {
-	log.Error().Msgf(fmt.Sprintf("Raft[%v]: ", rf.me)+format, args...)
+	log.Error().Msgf(fmt.Sprintf("Raft[%v]state[%v]term(%v): ", rf.me, rf.state, rf.currentTerm)+format, args...)
 }
 
 // restore previously persisted state.
