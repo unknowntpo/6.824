@@ -192,6 +192,14 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	defer rf.mu.Unlock()
 
 	rf.LogInfo("handle AppendEntries request for leader: %v", args.LeaderID)
+	// if is candidate:
+	//   if rf.term < rf.currentTerm, reject
+	//   if rf.term > rf.currentTerm, approve and become follower
+	// if is leader:
+	// 	 if rf.term < rf.currentTerm, reject
+	// 	 if rf.term > rf.currentTerm, we are not leader anymore, reject
+	// 	 if rf.term == rf.currentTerm, reject it.
+
 	if rf.state == STATE_CANDIDATE {
 		if args.Term > rf.currentTerm {
 			// lose the election
@@ -226,6 +234,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.LogInfo("in RequestVote for req from srv: %v", args.CandidateID)
 
 	if rf.stateIs(STATE_LEADER) || rf.stateIs(STATE_CANDIDATE) {
+		rf.LogInfo("deny vote for %v because I am Leader or candidate", args.CandidateID)
 		reply.VoteGranted = false
 		return
 	}
@@ -236,6 +245,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		return
 	}
 
+	// FIXME: no need to check second cond
 	if rf.votedFor != votedForNull && rf.votedFor != args.CandidateID {
 		// we've already chosen a leader
 		reply.VoteGranted = false
@@ -350,38 +360,31 @@ var (
 	ErrFailedRPCCall = errors.New("failed rpc call")
 )
 
-func (rf *Raft) handleHealthcheck() error {
-	rf.mu.Lock()
-	defer rf.mu.Unlock()
+func (rf *Raft) handleHealthcheck(needLock bool) error {
+	if needLock {
+		rf.mu.Lock()
+		defer rf.mu.Unlock()
+	}
 
 	rf.LogInfo("in handleHealthcheck")
 	rf.electionTicker.Reset(foreverTimeout)
-
-	// disagreeWithLeader := 0
-	var wg sync.WaitGroup
 
 	for srvID := range rf.peers {
 		if srvID == rf.me {
 			continue
 		}
-		wg.Add(1)
 		go func(srvID int) {
-			// rf.mu.Lock()
-			// defer rf.mu.Unlock()
-
 			args := AppendEntriesArgs{LeaderID: rf.me, Term: int(rf.currentTerm)}
 			reply := AppendEntriesReply{}
 			rf.LogInfo("try to AppendEntries to srv %v", srvID)
 			if ok := rf.sendAppendEntries(srvID, &args, &reply); !ok {
 				// this peer may dead
-				rf.LogError("failed on rf.sendRequestVote to server %v: %v: %v", srvID, ErrFailedRPCCall, reply)
+				rf.LogError("failed on rf.sendAppendEntries to server %v: %v: %v", srvID, ErrFailedRPCCall, reply)
 				return
 			}
 			rf.LogInfo("sent AppendEntries to srv %v, success: %v", srvID, reply.Success)
 		}(srvID)
 	}
-
-	wg.Wait()
 
 	rf.LogInfo("Done handleHealthcheck")
 
@@ -392,6 +395,10 @@ func (rf *Raft) handleHealthcheck() error {
 
 // See raft paper Figure 2: Rules for servers
 // https://pdos.csail.mit.edu/6.824/papers/raft-extended.pdf
+// increment rf.currentTerm
+// reset election timer
+// send RequestVote RPC
+// if electionTimer times up, start new election
 func (rf *Raft) handleElection() error {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
@@ -415,19 +422,23 @@ func (rf *Raft) handleElection() error {
 			continue
 		}
 		go func(srvID int) {
-			rf.mu.Lock()
-			defer rf.mu.Unlock()
-
 			args := RequestVoteArgs{Term: currentTerm, CandidateID: rf.me}
 			reply := RequestVoteReply{}
 			rf.LogInfo("try to send RequestVote to Raft[%v]", srvID)
 			if ok := rf.sendRequestVote(srvID, &args, &reply); !ok {
 				rf.LogInfo("failed on rf.sendRequestVote to server %v: %v, reply: %v", srvID, ErrFailedRPCCall, reply)
+				return
 			}
-			if reply.VoteGranted {
+			// if we are set to leader by other goroutine, just skip it
+			rf.mu.Lock()
+			defer rf.mu.Unlock()
+			if reply.VoteGranted && rf.stateIs(STATE_CANDIDATE) {
 				voteCnt++
+				rf.LogInfo("got 1 vote")
 				if voteCnt >= int64(majority) && rf.currentTerm == currentTerm {
+					rf.LogInfo("win the election, voteCnt: %v", voteCnt)
 					rf.state = STATE_LEADER
+					rf.handleHealthcheck(false)
 				}
 			}
 			rf.LogInfo("done RequestVote to Raft[%v], vote granted: %v", srvID, reply.VoteGranted)
@@ -440,10 +451,10 @@ var electionTimeout = 1000*time.Millisecond + getRand()
 
 var foreverTimeout = 100 * time.Minute
 
-var healthCheckDuration = 100 * time.Millisecond
+var healthCheckDuration = 500 * time.Millisecond
 
 func getRand() time.Duration {
-	maxms := big.NewInt(500)
+	maxms := big.NewInt(1000)
 	ms, _ := crand.Int(crand.Reader, maxms)
 	return time.Duration(ms.Int64()) * time.Millisecond
 }
@@ -452,7 +463,7 @@ func getRand() time.Duration {
 // heartsbeats recently.
 func (rf *Raft) ticker() {
 	// use random timeout to prevent all raft instance to become candidate in the smae time
-	duration := electionTimeout + getRand()
+	duration := electionTimeout
 	// rf.LogInfo("duration: %v", duration)
 	rf.electionTicker = time.NewTicker(duration)
 	rf.healthTicker = time.NewTicker(healthCheckDuration)
@@ -468,14 +479,10 @@ func (rf *Raft) ticker() {
 				// rf.LogInfo("break")
 				break
 			}
-			if err := rf.handleHealthcheck(); err != nil {
+			if err := rf.handleHealthcheck(true); err != nil {
 				rf.LogError("failed on rf.handleHealthcheck: %v", err)
 			}
 		}
-		// Your code here to check if a leader election should
-		// be started and to randomize sleeping time using
-		// time.Sleep().
-		// time.Sleep(30 * time.Millisecond)
 	}
 }
 
