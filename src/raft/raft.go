@@ -67,7 +67,8 @@ type Raft struct {
 	// state a Raft server must maintain.
 	state       int
 	currentTerm int
-	votedFor    int
+	// when increasing term, we need to set votedFor to proper raft srvID.
+	votedFor int
 
 	electionTicker *time.Ticker
 	healthTicker   *time.Ticker
@@ -192,33 +193,50 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	defer rf.mu.Unlock()
 
 	rf.LogInfo("handle AppendEntries request for leader: %v", args.LeaderID)
-	// if is candidate:
-	//   if rf.term < rf.currentTerm, reject
-	//   if rf.term > rf.currentTerm, approve and become follower
-	// if is leader:
-	// 	 if rf.term < rf.currentTerm, reject
-	// 	 if rf.term > rf.currentTerm, we are not leader anymore, reject
-	// 	 if rf.term == rf.currentTerm, reject it.
-
-	if rf.state == STATE_CANDIDATE {
+	switch {
+	case rf.state == STATE_CANDIDATE:
 		if args.Term > rf.currentTerm {
 			// lose the election
 			// $5.2 (b) another server establishes itself as leader
 			rf.state = STATE_FOLLOWER
+		} else if args.Term < rf.currentTerm {
+			reply.Success = false
+			reply.Term = rf.currentTerm
+			return
+		}
+	case rf.state == STATE_LEADER:
+		if args.Term <= rf.currentTerm {
+			// lose the election
+			// $5.2 (b) another server establishes itself as leader
+			reply.Success = false
+			reply.Term = rf.currentTerm
+			return
+		} else {
+			// args.Term > rf.currentTerm, we are not leader anymore.
+			reply.Success = true
+			rf.currentTerm = args.Term
+			rf.votedFor = votedForNull
+			rf.state = STATE_FOLLOWER
+			reply.Term = rf.currentTerm
+			return
+		}
+	case rf.state == STATE_FOLLOWER:
+		if args.Term < rf.currentTerm {
+			// lose the election
+			// $5.2 (b) another server establishes itself as leader
+			reply.Success = false
+			reply.Term = rf.currentTerm
+			return
+		} else {
+			// args.Term > rf.currentTerm, we are not leader anymore.
+			reply.Success = true
+			rf.currentTerm = args.Term
+			rf.votedFor = votedForNull
+			reply.Term = rf.currentTerm
+			rf.electionTicker.Reset(electionTimeout)
+			return
 		}
 	}
-	if rf.currentTerm > args.Term {
-		rf.LogError("you are not leader")
-		reply.Success = false
-		return
-	}
-	rf.currentTerm = args.Term
-	// we need to reset rf.voteFor to null, or in next election,
-	// we can't vote for anyone except old votee.
-	rf.votedFor = votedForNull
-
-	reply.Success = true
-	rf.electionTicker.Reset(electionTimeout)
 }
 
 // example RequestVote RPC handler.
@@ -233,9 +251,11 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	rf.LogInfo("in RequestVote for req from srv: %v", args.CandidateID)
 
-	if rf.stateIs(STATE_LEADER) || rf.stateIs(STATE_CANDIDATE) {
-		rf.LogInfo("deny vote for %v because I am Leader or candidate", args.CandidateID)
-		reply.VoteGranted = false
+	// FIXME: How to handle the case when rf is leader or candidate ?
+	if rf.currentTerm < args.Term {
+		rf.currentTerm = args.Term
+		rf.votedFor = args.CandidateID
+		rf.state = STATE_FOLLOWER
 		return
 	}
 
@@ -245,8 +265,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		return
 	}
 
-	// FIXME: no need to check second cond
-	if rf.votedFor != votedForNull && rf.votedFor != args.CandidateID {
+	if rf.votedFor != votedForNull {
 		// we've already chosen a leader
 		reply.VoteGranted = false
 		reply.Term = int(rf.currentTerm)
@@ -404,9 +423,6 @@ func (rf *Raft) handleElection() error {
 	defer rf.mu.Unlock()
 
 	rf.LogInfo("in handleElection")
-	if !rf.stateIs(STATE_FOLLOWER) {
-		return fmt.Errorf("wrong state")
-	}
 
 	rf.state = STATE_CANDIDATE
 	rf.currentTerm += 1
@@ -424,9 +440,7 @@ func (rf *Raft) handleElection() error {
 		go func(srvID int) {
 			args := RequestVoteArgs{Term: currentTerm, CandidateID: rf.me}
 			reply := RequestVoteReply{}
-			rf.LogInfo("try to send RequestVote to Raft[%v]", srvID)
 			if ok := rf.sendRequestVote(srvID, &args, &reply); !ok {
-				rf.LogInfo("failed on rf.sendRequestVote to server %v: %v, reply: %v", srvID, ErrFailedRPCCall, reply)
 				return
 			}
 			// if we are set to leader by other goroutine, just skip it
@@ -454,7 +468,7 @@ var foreverTimeout = 100 * time.Minute
 var healthCheckDuration = 500 * time.Millisecond
 
 func getRand() time.Duration {
-	maxms := big.NewInt(1000)
+	maxms := big.NewInt(1500)
 	ms, _ := crand.Int(crand.Reader, maxms)
 	return time.Duration(ms.Int64()) * time.Millisecond
 }
@@ -463,6 +477,7 @@ func getRand() time.Duration {
 // heartsbeats recently.
 func (rf *Raft) ticker() {
 	// use random timeout to prevent all raft instance to become candidate in the smae time
+	// sleep more so only 1 srv will be in candidate state
 	duration := electionTimeout
 	// rf.LogInfo("duration: %v", duration)
 	rf.electionTicker = time.NewTicker(duration)
@@ -472,7 +487,6 @@ func (rf *Raft) ticker() {
 		select {
 		case <-rf.electionTicker.C:
 			rf.handleElection()
-			time.Sleep(getRand())
 		case <-rf.healthTicker.C:
 			// if it's not leader, break
 			if !rf.isLeader() {
