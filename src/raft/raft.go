@@ -233,7 +233,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			rf.currentTerm = args.Term
 			rf.votedFor = votedForNull
 			reply.Term = rf.currentTerm
-			rf.electionTicker.Reset(electionTimeout)
+			rf.electionTicker.Reset(genElectionTimeout())
 			return
 		}
 	}
@@ -251,21 +251,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	rf.LogInfo("in RequestVote for req from srv: %v", args.CandidateID)
 
-	// FIXME: How to handle the case when rf is leader or candidate ?
-	if rf.currentTerm < args.Term {
-		rf.currentTerm = args.Term
-		rf.votedFor = args.CandidateID
-		rf.state = STATE_FOLLOWER
-		return
-	}
-
 	// $5.1
-	if args.Term < int(rf.currentTerm) {
-		reply.VoteGranted = false
-		return
-	}
-
-	if rf.votedFor != votedForNull {
+	if args.Term < int(rf.currentTerm) || rf.votedFor != votedForNull {
 		// we've already chosen a leader
 		reply.VoteGranted = false
 		reply.Term = int(rf.currentTerm)
@@ -278,7 +265,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		reply.VoteGranted = true
 		reply.Term = int(rf.currentTerm)
 		rf.votedFor = args.CandidateID
-		rf.electionTicker.Reset(electionTimeout)
+		rf.electionTicker.Reset(genElectionTimeout())
 		rf.currentTerm = args.Term
 		rf.LogInfo("my currentTerm: %v", rf.currentTerm)
 
@@ -395,19 +382,16 @@ func (rf *Raft) handleHealthcheck(needLock bool) error {
 		go func(srvID int) {
 			args := AppendEntriesArgs{LeaderID: rf.me, Term: int(rf.currentTerm)}
 			reply := AppendEntriesReply{}
-			rf.LogInfo("try to AppendEntries to srv %v", srvID)
-			if ok := rf.sendAppendEntries(srvID, &args, &reply); !ok {
+			if !rf.sendAppendEntries(srvID, &args, &reply) {
 				// this peer may dead
-				rf.LogError("failed on rf.sendAppendEntries to server %v: %v: %v", srvID, ErrFailedRPCCall, reply)
 				return
 			}
-			rf.LogInfo("sent AppendEntries to srv %v, success: %v", srvID, reply.Success)
 		}(srvID)
 	}
 
 	rf.LogInfo("Done handleHealthcheck")
 
-	rf.electionTicker.Reset(electionTimeout)
+	rf.electionTicker.Reset(genElectionTimeout())
 
 	return nil
 }
@@ -422,10 +406,10 @@ func (rf *Raft) handleElection() error {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	rf.LogInfo("in handleElection")
-
 	rf.state = STATE_CANDIDATE
 	rf.currentTerm += 1
+
+	rf.LogInfo("in handleElection")
 
 	// vote for themselves
 	rf.votedFor = rf.me
@@ -446,6 +430,15 @@ func (rf *Raft) handleElection() error {
 			// if we are set to leader by other goroutine, just skip it
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
+			rf.LogInfo("done sending RequestVote to Raft[%v], vote granted: %v", srvID, reply.VoteGranted)
+			if reply.Term > rf.currentTerm {
+				// FIXME: is this statement in paper ?
+				// votee's term is greater them us, we are not leader
+				rf.currentTerm = reply.Term
+				rf.votedFor = votedForNull
+				rf.state = STATE_FOLLOWER
+				return
+			}
 			if reply.VoteGranted && rf.stateIs(STATE_CANDIDATE) {
 				voteCnt++
 				rf.LogInfo("got 1 vote")
@@ -455,20 +448,23 @@ func (rf *Raft) handleElection() error {
 					rf.handleHealthcheck(false)
 				}
 			}
-			rf.LogInfo("done RequestVote to Raft[%v], vote granted: %v", srvID, reply.VoteGranted)
 		}(srvID)
 	}
 	return nil
 }
 
-var electionTimeout = 1000*time.Millisecond + getRand()
+var electionTimeout = 1000 * time.Millisecond
 
 var foreverTimeout = 100 * time.Minute
 
 var healthCheckDuration = 500 * time.Millisecond
 
+func genElectionTimeout() time.Duration {
+	return getRand() + electionTimeout
+}
+
 func getRand() time.Duration {
-	maxms := big.NewInt(1500)
+	maxms := big.NewInt(500)
 	ms, _ := crand.Int(crand.Reader, maxms)
 	return time.Duration(ms.Int64()) * time.Millisecond
 }
@@ -478,10 +474,11 @@ func getRand() time.Duration {
 func (rf *Raft) ticker() {
 	// use random timeout to prevent all raft instance to become candidate in the smae time
 	// sleep more so only 1 srv will be in candidate state
-	duration := electionTimeout
 	// rf.LogInfo("duration: %v", duration)
-	rf.electionTicker = time.NewTicker(duration)
+	rf.mu.Lock()
+	rf.electionTicker = time.NewTicker(genElectionTimeout())
 	rf.healthTicker = time.NewTicker(healthCheckDuration)
+	rf.mu.Unlock()
 
 	for rf.killed() == false {
 		select {
