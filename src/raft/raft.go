@@ -374,19 +374,21 @@ func (rf *Raft) handleHealthcheck(needLock bool) error {
 
 	rf.LogInfo("in handleHealthcheck")
 	rf.electionTicker.Reset(foreverTimeout)
+	me := rf.me
+	currentTerm := rf.currentTerm
 
 	for srvID := range rf.peers {
 		if srvID == rf.me {
 			continue
 		}
-		go func(srvID int) {
-			args := AppendEntriesArgs{LeaderID: rf.me, Term: int(rf.currentTerm)}
+		go func(srvID int, me int) {
+			args := AppendEntriesArgs{LeaderID: me, Term: currentTerm}
 			reply := AppendEntriesReply{}
 			if !rf.sendAppendEntries(srvID, &args, &reply) {
 				// this peer may dead
 				return
 			}
-		}(srvID)
+		}(srvID, me)
 	}
 
 	rf.LogInfo("Done handleHealthcheck")

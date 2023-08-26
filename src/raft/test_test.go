@@ -76,7 +76,7 @@ func TestReElection2A(t *testing.T) {
 	cfg.connect(leader1)
 	leader2 := cfg.checkOneLeader()
 
-	t.Logf("disconnecting server so there's no quorum: %v", leader1)
+	t.Logf("disconnecting server so there's no quorum: current leader: (%v)", leader2)
 
 	// if there's no quorum, no new leader should
 	// be elected.
@@ -90,9 +90,13 @@ func TestReElection2A(t *testing.T) {
 	// does not think it is the leader.
 	cfg.checkNoLeader()
 
+	t.Logf("if a quorum arises ID: (%v), it should elect a leader", (leader2+1)%servers)
+
 	// if a quorum arises, it should elect a leader.
 	cfg.connect((leader2 + 1) % servers)
 	cfg.checkOneLeader()
+
+	t.Log("re-join of last node shouldn't prevent leader from existing.")
 
 	// re-join of last node shouldn't prevent leader from existing.
 	cfg.connect(leader2)
