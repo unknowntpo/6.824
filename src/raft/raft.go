@@ -192,7 +192,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	rf.LogInfo("handle AppendEntries request for leader: %v", args.LeaderID)
+	rf.LogInfo("handle AppendEntries request for leader: %v, Term: %v", args.LeaderID, args.Term)
 	switch {
 	case rf.state == STATE_CANDIDATE:
 		if args.Term > rf.currentTerm {
@@ -218,6 +218,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 			rf.votedFor = votedForNull
 			rf.state = STATE_FOLLOWER
 			reply.Term = rf.currentTerm
+			rf.LogInfo("I am not leader anymore")
 			return
 		}
 	case rf.state == STATE_FOLLOWER:
@@ -252,10 +253,22 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	rf.LogInfo("in RequestVote for req from srv: %v", args.CandidateID)
 
 	// $5.1
-	if args.Term < int(rf.currentTerm) || rf.votedFor != votedForNull {
+	// request source srv is outdated, reject the vote.
+	if args.Term < int(rf.currentTerm) {
 		// we've already chosen a leader
 		reply.VoteGranted = false
 		reply.Term = int(rf.currentTerm)
+		return
+	}
+
+	// From figure 4
+	// our term is outdated, if we are candidate or leader, become follower
+	if args.Term > int(rf.currentTerm) &&
+		(rf.stateIs(STATE_CANDIDATE) || rf.stateIs(STATE_LEADER)) {
+		// we are out-of-date, return to follower
+		rf.state = STATE_FOLLOWER
+		rf.currentTerm = args.Term
+		rf.votedFor = votedForNull
 		return
 	}
 
@@ -388,6 +401,15 @@ func (rf *Raft) handleHealthcheck(needLock bool) error {
 				// this peer may dead
 				return
 			}
+			// rf.mu.Lock()
+			// defer rf.mu.Unlock()
+			// if rf.currentTerm == currentTerm && rf.currentTerm < reply.Term {
+			// 	// we are outdated, become follower
+			// 	rf.stateIs(STATE_FOLLOWER)
+			// 	rf.currentTerm = reply.Term
+			// 	rf.electionTicker.Reset(genElectionTimeout())
+			// 	return
+			// }
 		}(srvID, me)
 	}
 
@@ -444,7 +466,7 @@ func (rf *Raft) handleElection() error {
 			if reply.VoteGranted && rf.stateIs(STATE_CANDIDATE) {
 				voteCnt++
 				rf.LogInfo("got 1 vote")
-				if voteCnt >= int64(majority) && rf.currentTerm == currentTerm {
+				if voteCnt > int64(majority) && rf.currentTerm == currentTerm {
 					rf.LogInfo("win the election, voteCnt: %v", voteCnt)
 					rf.state = STATE_LEADER
 					rf.handleHealthcheck(false)
@@ -455,7 +477,7 @@ func (rf *Raft) handleElection() error {
 	return nil
 }
 
-var electionTimeout = 1000 * time.Millisecond
+var electionTimeout = 500 * time.Millisecond
 
 var foreverTimeout = 100 * time.Minute
 
@@ -466,7 +488,7 @@ func genElectionTimeout() time.Duration {
 }
 
 func getRand() time.Duration {
-	maxms := big.NewInt(500)
+	maxms := big.NewInt(300)
 	ms, _ := crand.Int(crand.Reader, maxms)
 	return time.Duration(ms.Int64()) * time.Millisecond
 }
