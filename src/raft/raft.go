@@ -200,15 +200,13 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 
 	if args.Term > rf.currentTerm {
-		rf.state = STATE_FOLLOWER
-		rf.currentTerm = args.Term
+		rf.state, rf.currentTerm = STATE_FOLLOWER, args.Term
 		rf.votedFor = votedForNull
-		rf.electionTicker.Reset(genElectionTimeout())
-
-		reply.Success = true
-		reply.Term = rf.currentTerm
-		return
 	}
+
+	rf.electionTicker.Reset(genElectionTimeout())
+
+	reply.Success, reply.Term = true, rf.currentTerm
 }
 
 // example RequestVote RPC handler.
