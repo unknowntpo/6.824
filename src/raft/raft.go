@@ -227,8 +227,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// request source srv is outdated, reject the vote.
 	if args.Term < int(rf.currentTerm) {
 		// we've already chosen a leader
-		reply.VoteGranted = false
-		reply.Term = int(rf.currentTerm)
+		reply.VoteGranted, reply.Term = false, rf.currentTerm
 		return
 	}
 
@@ -248,11 +247,10 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	// $5.2, $5.4
 	if rf.votedFor == votedForNull && rf.logIsUpToDateAsCandidate() {
 		rf.LogInfo("voted for %v", args.CandidateID)
-		reply.VoteGranted = true
-		reply.Term = int(rf.currentTerm)
+		reply.VoteGranted, reply.Term = true, rf.currentTerm
+
 		rf.votedFor = args.CandidateID
 		rf.electionTicker.Reset(genElectionTimeout())
-		rf.currentTerm = args.Term
 		rf.LogInfo("my currentTerm: %v", rf.currentTerm)
 		rf.state = STATE_FOLLOWER
 
@@ -407,6 +405,7 @@ func (rf *Raft) handleHealthcheck(needLock bool) error {
 func (rf *Raft) handleElection() error {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
+	defer rf.electionTicker.Reset(genElectionTimeout())
 
 	rf.state = STATE_CANDIDATE
 	rf.currentTerm += 1
@@ -433,36 +432,29 @@ func (rf *Raft) handleElection() error {
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
 			rf.LogInfo("done sending RequestVote to Raft[%v], vote granted: %v", srvID, reply.VoteGranted)
-			if reply.Term > rf.currentTerm && rf.stateIs(STATE_CANDIDATE) {
-				// FIXME: is this statement in paper ?
-				// votee's term is greater them us, we are not leader
-				rf.currentTerm = reply.Term
-				rf.votedFor = votedForNull
-				rf.state = STATE_FOLLOWER
-				return
-			}
-			if reply.VoteGranted && rf.stateIs(STATE_CANDIDATE) {
-				voteCnt++
-				rf.LogInfo("got 1 vote")
-				if voteCnt > int64(majority) && rf.currentTerm == currentTerm {
-					rf.LogInfo("win the election, voteCnt: %v", voteCnt)
-					rf.state = STATE_LEADER
-					rf.handleHealthcheck(false)
+			if rf.stateIs(STATE_CANDIDATE) {
+				if reply.Term > rf.currentTerm {
+					// FIXME: is this statement in paper ?
+					// votee's term is greater them us, we are not leader
+					rf.currentTerm = reply.Term
+					rf.votedFor = votedForNull
+					rf.state = STATE_FOLLOWER
+					return
+				}
+				if reply.VoteGranted {
+					voteCnt++
+					rf.LogInfo("got 1 vote")
+					if voteCnt > int64(majority) && rf.currentTerm == currentTerm {
+						rf.LogInfo("win the election, voteCnt: %v", voteCnt)
+						rf.state = STATE_LEADER
+						rf.handleHealthcheck(false)
+					}
 				}
 			}
+
 		}(srvID)
 	}
 	return nil
-}
-
-var electionTimeout = 500 * time.Millisecond
-
-var foreverTimeout = 100 * time.Minute
-
-var healthCheckDuration = 500 * time.Millisecond
-
-func genElectionTimeout() time.Duration {
-	return getRand() + electionTimeout
 }
 
 func getRand() time.Duration {
@@ -470,6 +462,14 @@ func getRand() time.Duration {
 	ms, _ := crand.Int(crand.Reader, maxms)
 	return time.Duration(ms.Int64()) * time.Millisecond
 }
+
+func genElectionTimeout() time.Duration {
+	return getRand() + 300*time.Millisecond
+}
+
+var foreverTimeout = 100 * time.Minute
+
+var healthCheckDuration = 500 * time.Millisecond
 
 // The ticker go routine starts a new election if this peer hasn't received
 // heartsbeats recently.
