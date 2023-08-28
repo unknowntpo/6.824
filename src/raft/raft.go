@@ -193,50 +193,21 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	defer rf.mu.Unlock()
 
 	rf.LogInfo("handle AppendEntries request for leader: %v, Term: %v", args.LeaderID, args.Term)
-	switch {
-	case rf.state == STATE_CANDIDATE:
-		if args.Term > rf.currentTerm {
-			// lose the election
-			// $5.2 (b) another server establishes itself as leader
-			rf.state = STATE_FOLLOWER
-		} else if args.Term < rf.currentTerm {
-			reply.Success = false
-			reply.Term = rf.currentTerm
-			return
-		}
-	case rf.state == STATE_LEADER:
-		if args.Term <= rf.currentTerm {
-			// lose the election
-			// $5.2 (b) another server establishes itself as leader
-			reply.Success = false
-			reply.Term = rf.currentTerm
-			return
-		} else {
-			// args.Term > rf.currentTerm, we are not leader anymore.
-			reply.Success = true
-			rf.currentTerm = args.Term
-			rf.votedFor = votedForNull
-			rf.state = STATE_FOLLOWER
-			reply.Term = rf.currentTerm
-			rf.LogInfo("I am not leader anymore")
-			return
-		}
-	case rf.state == STATE_FOLLOWER:
-		if args.Term < rf.currentTerm {
-			// lose the election
-			// $5.2 (b) another server establishes itself as leader
-			reply.Success = false
-			reply.Term = rf.currentTerm
-			return
-		} else {
-			// args.Term > rf.currentTerm, we are not leader anymore.
-			reply.Success = true
-			rf.currentTerm = args.Term
-			rf.votedFor = votedForNull
-			reply.Term = rf.currentTerm
-			rf.electionTicker.Reset(genElectionTimeout())
-			return
-		}
+	if args.Term < rf.currentTerm {
+		reply.Success = false
+		reply.Term = rf.currentTerm
+		return
+	}
+
+	if args.Term > rf.currentTerm {
+		rf.state = STATE_FOLLOWER
+		rf.currentTerm = args.Term
+		rf.votedFor = votedForNull
+		rf.electionTicker.Reset(genElectionTimeout())
+
+		reply.Success = true
+		reply.Term = rf.currentTerm
+		return
 	}
 }
 
@@ -269,6 +240,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.state = STATE_FOLLOWER
 		rf.currentTerm = args.Term
 		rf.votedFor = votedForNull
+		reply.Term = rf.currentTerm
+		rf.electionTicker.Reset(genElectionTimeout())
 		return
 	}
 
@@ -281,6 +254,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		rf.electionTicker.Reset(genElectionTimeout())
 		rf.currentTerm = args.Term
 		rf.LogInfo("my currentTerm: %v", rf.currentTerm)
+		rf.state = STATE_FOLLOWER
 
 		return
 	}
@@ -401,15 +375,19 @@ func (rf *Raft) handleHealthcheck(needLock bool) error {
 				// this peer may dead
 				return
 			}
-			// rf.mu.Lock()
-			// defer rf.mu.Unlock()
-			// if rf.currentTerm == currentTerm && rf.currentTerm < reply.Term {
-			// 	// we are outdated, become follower
-			// 	rf.stateIs(STATE_FOLLOWER)
-			// 	rf.currentTerm = reply.Term
-			// 	rf.electionTicker.Reset(genElectionTimeout())
-			// 	return
-			// }
+			if !reply.Success {
+				rf.mu.Lock()
+				defer rf.mu.Unlock()
+				rf.LogInfo("healthcheck failed: got term: %v", reply.Term)
+				if rf.currentTerm < reply.Term {
+					// we are outdated, become follower
+					rf.state = STATE_FOLLOWER
+					rf.currentTerm = reply.Term
+					rf.votedFor = votedForNull
+					rf.electionTicker.Reset(genElectionTimeout())
+					return
+				}
+			}
 		}(srvID, me)
 	}
 
@@ -455,7 +433,7 @@ func (rf *Raft) handleElection() error {
 			rf.mu.Lock()
 			defer rf.mu.Unlock()
 			rf.LogInfo("done sending RequestVote to Raft[%v], vote granted: %v", srvID, reply.VoteGranted)
-			if reply.Term > rf.currentTerm {
+			if reply.Term > rf.currentTerm && rf.stateIs(STATE_CANDIDATE) {
 				// FIXME: is this statement in paper ?
 				// votee's term is greater them us, we are not leader
 				rf.currentTerm = reply.Term
@@ -488,7 +466,7 @@ func genElectionTimeout() time.Duration {
 }
 
 func getRand() time.Duration {
-	maxms := big.NewInt(300)
+	maxms := big.NewInt(700)
 	ms, _ := crand.Int(crand.Reader, maxms)
 	return time.Duration(ms.Int64()) * time.Millisecond
 }
