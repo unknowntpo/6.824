@@ -441,11 +441,12 @@ func (rf *Raft) handleElection() error {
 				}
 				if reply.VoteGranted {
 					voteCnt++
-					rf.LogInfo("got 1 vote")
+					rf.LogInfo("got %v vote", voteCnt)
 					if voteCnt > int64(majority) && rf.currentTerm == currentTerm {
 						rf.LogInfo("win the election, voteCnt: %v", voteCnt)
 						rf.state = STATE_LEADER
 						rf.handleHealthcheck(false)
+						rf.electionTicker.Reset(genElectionTimeout())
 					}
 				}
 			}
