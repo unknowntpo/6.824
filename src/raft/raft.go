@@ -235,10 +235,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 		(rf.stateIs(STATE_CANDIDATE) || rf.stateIs(STATE_LEADER)) {
 		// we are out-of-date, return to follower
 		rf.state = STATE_FOLLOWER
-		rf.currentTerm = args.Term
-		rf.votedFor = votedForNull
+		rf.currentTerm, rf.votedFor = args.Term, votedForNull
 		reply.Term = rf.currentTerm
-		rf.electionTicker.Reset(genElectionTimeout())
 		return
 	}
 
@@ -457,18 +455,18 @@ func (rf *Raft) handleElection() error {
 }
 
 func getRand() time.Duration {
-	maxms := big.NewInt(700)
+	maxms := big.NewInt(600)
 	ms, _ := crand.Int(crand.Reader, maxms)
 	return time.Duration(ms.Int64()) * time.Millisecond
 }
 
 func genElectionTimeout() time.Duration {
-	return getRand() + 300*time.Millisecond
+	return getRand() + 400*time.Millisecond
 }
 
 var foreverTimeout = 100 * time.Minute
 
-var healthCheckDuration = 500 * time.Millisecond
+var healthCheckDuration = 100 * time.Millisecond
 
 // The ticker go routine starts a new election if this peer hasn't received
 // heartsbeats recently.
