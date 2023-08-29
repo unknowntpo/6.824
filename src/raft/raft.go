@@ -231,8 +231,7 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 
 	// From figure 4
 	// our term is outdated, if we are candidate or leader, become follower
-	if args.Term > int(rf.currentTerm) &&
-		(rf.stateIs(STATE_CANDIDATE) || rf.stateIs(STATE_LEADER)) {
+	if args.Term > rf.currentTerm {
 		// we are out-of-date, return to follower
 		rf.state = STATE_FOLLOWER
 		rf.currentTerm, rf.votedFor = args.Term, votedForNull
@@ -241,7 +240,8 @@ func (rf *Raft) RequestVote(args *RequestVoteArgs, reply *RequestVoteReply) {
 	}
 
 	// $5.2, $5.4
-	if rf.votedFor == votedForNull && rf.logIsUpToDateAsCandidate() {
+	// at here, args.Term == rf.currentTerm
+	if (rf.votedFor == votedForNull || rf.votedFor == args.CandidateID) && rf.logIsUpToDateAsCandidate() {
 		rf.LogInfo("voted for %v", args.CandidateID)
 		reply.VoteGranted, reply.Term = true, rf.currentTerm
 
@@ -376,8 +376,7 @@ func (rf *Raft) handleHealthcheck(needLock bool) error {
 				if rf.currentTerm < reply.Term {
 					// we are outdated, become follower
 					rf.state = STATE_FOLLOWER
-					rf.currentTerm = reply.Term
-					rf.votedFor = votedForNull
+					rf.currentTerm, rf.votedFor = reply.Term, votedForNull
 					rf.electionTicker.Reset(genElectionTimeout())
 					return
 				}
@@ -429,12 +428,12 @@ func (rf *Raft) handleElection() error {
 			defer rf.mu.Unlock()
 			rf.LogInfo("done sending RequestVote to Raft[%v], vote granted: %v", srvID, reply.VoteGranted)
 			if rf.stateIs(STATE_CANDIDATE) {
-				if reply.Term > rf.currentTerm {
+				if reply.Term > rf.currentTerm && currentTerm == rf.currentTerm {
 					// FIXME: is this statement in paper ?
 					// votee's term is greater them us, we are not leader
-					rf.currentTerm = reply.Term
-					rf.votedFor = votedForNull
+					rf.currentTerm, rf.votedFor = reply.Term, votedForNull
 					rf.state = STATE_FOLLOWER
+					rf.electionTicker.Reset(genElectionTimeout())
 					return
 				}
 				if reply.VoteGranted {
@@ -455,13 +454,14 @@ func (rf *Raft) handleElection() error {
 }
 
 func getRand() time.Duration {
-	maxms := big.NewInt(600)
+	maxms := big.NewInt(700)
 	ms, _ := crand.Int(crand.Reader, maxms)
 	return time.Duration(ms.Int64()) * time.Millisecond
 }
 
 func genElectionTimeout() time.Duration {
-	return getRand() + 400*time.Millisecond
+	// return getRand() + 400*time.Millisecond
+	return getRand() + 500*time.Millisecond
 }
 
 var foreverTimeout = 100 * time.Minute
