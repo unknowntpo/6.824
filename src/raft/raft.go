@@ -80,8 +80,14 @@ type Raft struct {
 	lastApplied int
 
 	// Volatile state of leader
-	nextIndex  []int
-	matchIndex []int
+	// nextIdxs is the slice of index of the next log entry
+	// to send to that server (initialized to leader
+	// last log index + 1)
+	nextIdxs []int
+	// matchIdxs is the index of highest log entry
+	// known to be replicated on server
+	// (initialized to 0, increases monotonically)
+	matchIdxs []int
 
 	// timer
 	electionTimer *time.Timer
@@ -192,8 +198,8 @@ type AppendEntriesArgs struct {
 	// if len(Entries) == 0, it means a heatbeat.
 	Entries []Entry
 
-	// leaderCommit stores leaders's commitIndex.
-	leaderCommit int
+	// LeaderCommit stores leaders's commitIndex.
+	LeaderCommit int
 }
 
 type AppendEntriesReply struct {
@@ -228,6 +234,7 @@ type RequestVoteReply struct {
 // 4. Append any new entries not already in the log
 // 5. If leaderCommit > commitIndex, set commitIndex =
 // min(leaderCommit, index of last new entry)
+// B2
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
@@ -238,6 +245,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		reply.Term = rf.currentTerm
 		return
 	}
+
+	_ = B2
 
 	// $5.3
 	// 2. Reply false if log doesn’t contain an entry at prevLogIndex
@@ -268,9 +277,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	// 5. If leaderCommit > commitIndex, set commitIndex =
 	// min(leaderCommit, index of last new entry)
-	if args.leaderCommit > rf.commitIndex {
+	if args.LeaderCommit > rf.commitIndex {
 		lastEntryIdx := args.PrevLogIndex + len(args.Entries)
-		rf.commitIndex = min(lastEntryIdx, args.leaderCommit)
+		rf.commitIndex = min(lastEntryIdx, args.LeaderCommit)
 	}
 
 	if args.Term > rf.currentTerm {
@@ -379,6 +388,8 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 	return ok
 }
 
+const B2 = 1
+
 // the service using Raft (e.g. a k/v server) wants to start
 // agreement on the next command to be appended to Raft's log. if this
 // server isn't the leader, returns false. otherwise start the
@@ -392,17 +403,28 @@ func (rf *Raft) sendAppendEntries(server int, args *AppendEntriesArgs, reply *Ap
 // term. the third return value is true if this server believes it is
 // the leader.
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
+	rf.mu.Lock()
+	defer rf.mu.Unlock()
+
 	index := -1
-	term := -1
+	term := rf.currentTerm
 	isLeader := true
 
+	rf.LogInfo("in Start")
+
 	// Your code here (2B).
-	if !rf.isLeader() {
+	if !rf.isLeader(false) {
 		return index, term, false
 	}
 
-	rf.handleAppendEntries()
+	rf.LogInfo("in Start")
 
+	entries := []Entry{{Term: rf.currentTerm, Cmd: command}}
+	if err := rf.handleAppendEntries(false, entries); err != nil {
+		if errors.Is(err, ErrFailedToReplicate) {
+			return index, term, true
+		}
+	}
 	return index, term, isLeader
 }
 
@@ -425,9 +447,12 @@ func (rf *Raft) killed() bool {
 	return z == 1
 }
 
-func (rf *Raft) isLeader() bool {
-	_, isLeader := rf.GetState()
-	return isLeader
+func (rf *Raft) isLeader(needLock bool) bool {
+	if needLock {
+		rf.mu.Lock()
+		defer rf.mu.Unlock()
+	}
+	return rf.stateIs(STATE_LEADER)
 }
 
 var (
@@ -496,25 +521,65 @@ func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) error {
 		defer rf.mu.Unlock()
 	}
 
-	rf.LogInfo("in handleHealthcheck")
+	_ = B2
+
+	rf.LogInfo("in handleAppendEntries")
 	rf.electionTimer.Reset(foreverTimeout)
 	me := rf.me
 	currentTerm := rf.currentTerm
+
+	numOfSuccess := 0
+	done := make(chan struct{})
 
 	for srvID := range rf.peers {
 		if srvID == rf.me {
 			continue
 		}
+		// • If last log index ≥ nextIndex for a follower: send
+		// AppendEntries RPC with log entries starting at nextIndex
+		if !(len(rf.entries) >= rf.nextIdxs[srvID]) {
+			continue
+		}
+		prevLogIndex := rf.nextIdxs[srvID] - 1
+		prevLogEntry := rf.entries[prevLogIndex]
+
 		go func(srvID int, me int) {
-			args := AppendEntriesArgs{LeaderID: me, Term: currentTerm}
+			tryCnt := 3
+		BEGIN:
+			if tryCnt == 0 {
+				return
+			}
+			entries := make([]Entry, 0, len(rf.entries)-prevLogIndex+1)
+			copy(entries, rf.entries[prevLogIndex+1:])
+			args := AppendEntriesArgs{
+				LeaderID:     me,
+				Term:         currentTerm,
+				PrevLogIndex: prevLogIndex,
+				PrevLogTerm:  prevLogEntry.Term,
+				Entries:      entries,
+				LeaderCommit: rf.commitIndex,
+			}
 			reply := AppendEntriesReply{}
 			if !rf.sendAppendEntries(srvID, &args, &reply) {
 				// this peer may dead
 				return
 			}
-			if !reply.Success {
+			if reply.Success {
 				rf.mu.Lock()
 				defer rf.mu.Unlock()
+
+				rf.nextIdxs[srvID] = prevLogIndex + len(rf.entries) + 1
+				rf.matchIdxs[srvID] = prevLogIndex + len(entries)
+				numOfSuccess++
+				if rf.greaterThanMajority(numOfSuccess) {
+					// signal the waiter to commit
+					done <- struct{}{}
+					return
+				}
+			} else {
+				rf.mu.Lock()
+				defer rf.mu.Unlock()
+
 				rf.LogInfo("healthcheck failed: got term: %v", reply.Term)
 				if rf.currentTerm < reply.Term {
 					// we are outdated, become follower
@@ -523,15 +588,52 @@ func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) error {
 					rf.electionTimer.Reset(genElectionTimeout())
 					return
 				}
+				// if failed, we should decrement prevLogEntries and try again
+				prevLogIndex--
+				prevLogEntry = rf.entries[prevLogIndex]
+
+				tryCnt--
+				goto BEGIN
 			}
 		}(srvID, me)
 	}
+
+	<-done
 
 	rf.LogInfo("Done handleHealthcheck")
 
 	rf.electionTimer.Reset(genElectionTimeout())
 
+	if rf.greaterThanMajority(numOfSuccess) {
+		return ErrFailedToReplicate
+	}
+	return nil
 }
+
+func (rf *Raft) greaterThanMajority(val int) bool {
+	majority := len(rf.peers) / 2
+	return val > majority
+}
+
+func (rf *Raft) changeToLeader(needLock bool) {
+	if needLock {
+		rf.mu.Lock()
+		defer rf.mu.Unlock()
+	}
+	rf.state = STATE_LEADER
+	for srvID := range rf.peers {
+		if srvID == rf.me {
+			continue
+		}
+		// 0 [1 2 3]
+		// len: 4
+		// nextIdxs = 4
+		rf.nextIdxs[srvID] = len(rf.entries)
+	}
+	rf.handleHealthcheck(false)
+}
+
+var ErrFailedToReplicate = errors.New("failed to replicate cmd to follower")
 
 // See raft paper Figure 2: Rules for servers
 // https://pdos.csail.mit.edu/6.824/papers/raft-extended.pdf
@@ -583,8 +685,7 @@ func (rf *Raft) handleElection() error {
 					rf.LogInfo("got %v vote", voteCnt)
 					if voteCnt > int64(majority) && rf.currentTerm == currentTerm {
 						rf.LogInfo("win the election, voteCnt: %v", voteCnt)
-						rf.state = STATE_LEADER
-						rf.handleHealthcheck(false)
+						rf.changeToLeader(false)
 						rf.electionTimer.Reset(genElectionTimeout())
 					}
 				}
@@ -623,7 +724,7 @@ func (rf *Raft) ticker() {
 			rf.handleElection()
 		case <-rf.healthTicker.C:
 			// if it's not leader, break
-			if !rf.isLeader() {
+			if !rf.isLeader(true) {
 				// rf.LogInfo("break")
 				break
 			}
@@ -653,7 +754,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.state = STATE_FOLLOWER
 	rf.currentTerm = termInit
 
-	zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+	// init idxs for log
+	zerolog.SetGlobalLevel(zerolog.InfoLevel)
 
 	/*
 		fName := fmt.Sprintf("log-raft-%v.txt", rf.me)
@@ -674,8 +776,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// zerolog.TimeFieldFormat = zerolog.
 
 	// Your initialization code here (2A, 2B, 2C).
-	rf.nextIndex = make([]int, len(peers))
-	rf.matchIndex = make([]int, len(peers))
+	rf.nextIdxs = make([]int, len(peers))
+	rf.matchIdxs = make([]int, len(peers))
 	rf.entries = make([]Entry, 0, 10)
 	// because entry index starts from 1, we add dummy Entry at index 0
 	rf.entries = append(rf.entries, Entry{Term: -1, Cmd: nil})
