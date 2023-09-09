@@ -832,6 +832,7 @@ func (r *RPCMailBox) Serve() {
 	if e != nil {
 		log.Fatal().Msgf("listen error: %v", e)
 	}
+
 	go http.Serve(l, nil)
 }
 

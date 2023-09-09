@@ -30,6 +30,7 @@ import (
 	//	"6.824/labgob"
 	"6.824/labrpc"
 
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -65,16 +66,34 @@ type Raft struct {
 	// Your data here (2A, 2B, 2C).
 	// Look at the paper's Figure 2 for a description of what
 	// state a Raft server must maintain.
-	state       int
+
+	// Persistance state of all server
+	entries []Entry
+	// currentTerm stores current term of this server.
 	currentTerm int
 	// when increasing term, we need to set votedFor to proper raft srvID.
 	votedFor int
 
+	// Volatile state of all server
+	state       int
+	commitIndex int
+	lastApplied int
+
+	// Volatile state of leader
+	nextIndex  []int
+	matchIndex []int
+
+	// timer
 	electionTimer *time.Timer
 	healthTicker  *time.Ticker
-
-	// log[]
 }
+
+type Entry struct {
+	Term int
+	Cmd  any
+}
+
+var emptyEntry = Entry{Term: 0, Cmd: nil}
 
 const (
 	votedForNull int = -1
@@ -161,9 +180,20 @@ func (rf *Raft) Snapshot(index int, snapshot []byte) {
 }
 
 type AppendEntriesArgs struct {
-	LeaderID int
 	// Term is the term of leader
-	Term int
+	Term     int
+	LeaderID int
+	// prevLogIndex stores index of log immediately precedding new ones.
+	PrevLogIndex int
+
+	// prevLogTerm stores term of prevLogIndex entry.
+	PrevLogTerm int
+	// entries stores log entries to be replicated to other server,
+	// if len(Entries) == 0, it means a heatbeat.
+	Entries []Entry
+
+	// leaderCommit stores leaders's commitIndex.
+	leaderCommit int
 }
 
 type AppendEntriesReply struct {
@@ -188,6 +218,16 @@ type RequestVoteReply struct {
 	VoteGranted bool
 }
 
+// 2B:
+// 1. Reply false if term < currentTerm (§5.1)
+// 2. Reply false if log doesn’t contain an entry at prevLogIndex
+// whose term matches prevLogTerm (§5.3)
+// 3. If an existing entry conflicts with a new one (same index
+// but different terms), delete the existing entry and all that
+// follow it (§5.3)
+// 4. Append any new entries not already in the log
+// 5. If leaderCommit > commitIndex, set commitIndex =
+// min(leaderCommit, index of last new entry)
 func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply) {
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
@@ -199,6 +239,40 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		return
 	}
 
+	// $5.3
+	// 2. Reply false if log doesn’t contain an entry at prevLogIndex
+	// whose term matches prevLogTerm (§5.3)
+	if rf.entries[args.PrevLogIndex].Term != args.PrevLogTerm {
+		reply.Success, reply.Term = false, rf.currentTerm
+		return
+	}
+
+	// 3. If an existing entry conflicts with a new one (same index
+	// but different terms), delete the existing entry and all that
+	// follow it (§5.3)
+	begin := args.PrevLogIndex + 1
+	for i := begin; i < begin+len(args.Entries); i++ {
+		// how to compare ?
+		//                5
+		// args:         [][][][]
+		// rf:   [][][][][]
+		if i >= len(rf.entries) {
+			// 4. Append any new entries not already in the log
+			rf.entries = append(rf.entries, args.Entries[i-args.PrevLogIndex])
+			continue
+		}
+		if rf.entries[i] != args.Entries[i-args.PrevLogIndex] {
+			rf.entries[i] = args.Entries[i-args.PrevLogIndex]
+		}
+	}
+
+	// 5. If leaderCommit > commitIndex, set commitIndex =
+	// min(leaderCommit, index of last new entry)
+	if args.leaderCommit > rf.commitIndex {
+		lastEntryIdx := args.PrevLogIndex + len(args.Entries)
+		rf.commitIndex = min(lastEntryIdx, args.leaderCommit)
+	}
+
 	if args.Term > rf.currentTerm {
 		rf.state, rf.currentTerm = STATE_FOLLOWER, args.Term
 		rf.votedFor = votedForNull
@@ -207,6 +281,13 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.electionTimer.Reset(genElectionTimeout())
 
 	reply.Success, reply.Term = true, rf.currentTerm
+}
+
+func min(l, r int) int {
+	if l <= r {
+		return l
+	}
+	return r
 }
 
 // example RequestVote RPC handler.
@@ -316,6 +397,11 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	isLeader := true
 
 	// Your code here (2B).
+	if !rf.isLeader() {
+		return index, term, false
+	}
+
+	rf.handleAppendEntries()
 
 	return index, term, isLeader
 }
@@ -391,6 +477,60 @@ func (rf *Raft) handleHealthcheck(needLock bool) error {
 	rf.electionTimer.Reset(genElectionTimeout())
 
 	return nil
+}
+
+// If command received from client: append entry to local log,
+// respond after entry applied to state machine (§5.3)
+// • If last log index ≥ nextIndex for a follower: send
+// AppendEntries RPC with log entries starting at nextIndex
+// • If successful: update nextIndex and matchIndex for
+// follower (§5.3)
+// • If AppendEntries fails because of log inconsistency:
+// decrement nextIndex and retry (§5.3)
+// • If there exists an N such that N > commitIndex, a majority
+// of matchIndex[i] ≥ N, and log[N].term == currentTerm:
+// set commitIndex = N (§5.3, §5.4).
+func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) error {
+	if needLock {
+		rf.mu.Lock()
+		defer rf.mu.Unlock()
+	}
+
+	rf.LogInfo("in handleHealthcheck")
+	rf.electionTimer.Reset(foreverTimeout)
+	me := rf.me
+	currentTerm := rf.currentTerm
+
+	for srvID := range rf.peers {
+		if srvID == rf.me {
+			continue
+		}
+		go func(srvID int, me int) {
+			args := AppendEntriesArgs{LeaderID: me, Term: currentTerm}
+			reply := AppendEntriesReply{}
+			if !rf.sendAppendEntries(srvID, &args, &reply) {
+				// this peer may dead
+				return
+			}
+			if !reply.Success {
+				rf.mu.Lock()
+				defer rf.mu.Unlock()
+				rf.LogInfo("healthcheck failed: got term: %v", reply.Term)
+				if rf.currentTerm < reply.Term {
+					// we are outdated, become follower
+					rf.state = STATE_FOLLOWER
+					rf.currentTerm, rf.votedFor = reply.Term, votedForNull
+					rf.electionTimer.Reset(genElectionTimeout())
+					return
+				}
+			}
+		}(srvID, me)
+	}
+
+	rf.LogInfo("Done handleHealthcheck")
+
+	rf.electionTimer.Reset(genElectionTimeout())
+
 }
 
 // See raft paper Figure 2: Rules for servers
@@ -513,6 +653,8 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.state = STATE_FOLLOWER
 	rf.currentTerm = termInit
 
+	zerolog.SetGlobalLevel(zerolog.ErrorLevel)
+
 	/*
 		fName := fmt.Sprintf("log-raft-%v.txt", rf.me)
 		os.Remove(fName)
@@ -532,6 +674,11 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	// zerolog.TimeFieldFormat = zerolog.
 
 	// Your initialization code here (2A, 2B, 2C).
+	rf.nextIndex = make([]int, len(peers))
+	rf.matchIndex = make([]int, len(peers))
+	rf.entries = make([]Entry, 0, 10)
+	// because entry index starts from 1, we add dummy Entry at index 0
+	rf.entries = append(rf.entries, Entry{Term: -1, Cmd: nil})
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
