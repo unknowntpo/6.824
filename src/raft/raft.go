@@ -68,7 +68,8 @@ type Raft struct {
 	// state a Raft server must maintain.
 
 	// Persistance state of all server
-	entries []Entry
+	offset  int     // index of first entry in entries
+	entries []Entry // the index of each entry is offset + index of entry
 	// currentTerm stores current term of this server.
 	currentTerm int
 	// when increasing term, we need to set votedFor to proper raft srvID.
@@ -239,7 +240,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.mu.Lock()
 	defer rf.mu.Unlock()
 
-	rf.LogInfo("handle AppendEntries request for leader: %v, Term: %v", args.LeaderID, args.Term)
+	// rf.LogInfo("handle AppendEntries request for leader: %v, Term: %v, entries: %v", args.LeaderID, args.Term, args.Entries)
+	rf.LogInfo("handle AppendEntries request %+v", args)
+
 	if args.Term < rf.currentTerm {
 		reply.Success = false
 		reply.Term = rf.currentTerm
@@ -251,7 +254,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// $5.3
 	// 2. Reply false if log doesn’t contain an entry at prevLogIndex
 	// whose term matches prevLogTerm (§5.3)
-	if rf.entries[args.PrevLogIndex].Term != args.PrevLogTerm {
+	curLogIdx := len(rf.entries)
+	if curLogIdx > 1 && rf.entries[args.PrevLogIndex].Term != args.PrevLogTerm {
 		reply.Success, reply.Term = false, rf.currentTerm
 		return
 	}
@@ -267,13 +271,15 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		// rf:   [][][][][]
 		if i >= len(rf.entries) {
 			// 4. Append any new entries not already in the log
-			rf.entries = append(rf.entries, args.Entries[i-args.PrevLogIndex])
+			rf.entries = append(rf.entries, args.Entries[i-args.PrevLogIndex-1])
 			continue
 		}
 		if rf.entries[i] != args.Entries[i-args.PrevLogIndex] {
 			rf.entries[i] = args.Entries[i-args.PrevLogIndex]
 		}
 	}
+
+	rf.LogInfo("after append entries: entries: %v", rf.entries)
 
 	// 5. If leaderCommit > commitIndex, set commitIndex =
 	// min(leaderCommit, index of last new entry)
@@ -288,6 +294,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	}
 
 	rf.electionTimer.Reset(genElectionTimeout())
+
+	rf.LogInfo("after append entries: rf.commitIndex: %v entries: %v", rf.commitIndex, rf.entries)
 
 	reply.Success, reply.Term = true, rf.currentTerm
 }
@@ -417,14 +425,16 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 		return index, term, false
 	}
 
-	rf.LogInfo("in Start")
-
 	entries := []Entry{{Term: rf.currentTerm, Cmd: command}}
+	rf.LogInfo("in Start, try to commit cmd: %v", entries)
+
 	if err := rf.handleAppendEntries(false, entries); err != nil {
 		if errors.Is(err, ErrFailedToReplicate) {
 			return index, term, true
 		}
 	}
+	rf.LogInfo("in Start, done committed cmd: %v", entries)
+
 	return index, term, isLeader
 }
 
@@ -528,8 +538,11 @@ func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) error {
 	me := rf.me
 	currentTerm := rf.currentTerm
 
-	numOfSuccess := 0
-	done := make(chan struct{})
+	rf.entries = append(rf.entries, entries...)
+	leaderLastEntryIndex := len(rf.entries) - 1
+	numOfSuccess := 1
+
+	var wg sync.WaitGroup
 
 	for srvID := range rf.peers {
 		if srvID == rf.me {
@@ -537,20 +550,31 @@ func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) error {
 		}
 		// • If last log index ≥ nextIndex for a follower: send
 		// AppendEntries RPC with log entries starting at nextIndex
-		if !(len(rf.entries) >= rf.nextIdxs[srvID]) {
+		if !(leaderLastEntryIndex >= rf.nextIdxs[srvID]) {
 			continue
 		}
-		prevLogIndex := rf.nextIdxs[srvID] - 1
-		prevLogEntry := rf.entries[prevLogIndex]
-
 		go func(srvID int, me int) {
 			tryCnt := 3
 		BEGIN:
 			if tryCnt == 0 {
 				return
 			}
-			entries := make([]Entry, 0, len(rf.entries)-prevLogIndex+1)
-			copy(entries, rf.entries[prevLogIndex+1:])
+			time.Sleep(1 * time.Second)
+
+			rf.mu.Lock()
+			prevLogIndex := rf.nextIdxs[srvID] - 1
+			prevLogEntry := rf.entries[prevLogIndex]
+			rf.mu.Unlock()
+
+			rf.LogInfo("XXX prevLogIndex: %v", prevLogIndex)
+			rf.LogInfo("XXX prevLogEntries: %v", prevLogEntry)
+
+			// [][x=1][][], leader last log index = 1
+			// [][x=1][][], prevLogIndex = 1
+			// len(rf.entries) - 1 - rf.matchIdxs[srviD] + 1
+			// 2 - 1 - 0 + 1
+			entries := make([]Entry, leaderLastEntryIndex-rf.matchIdxs[srvID])
+			copy(entries, rf.entries[rf.matchIdxs[srvID]+rf.offset:])
 			args := AppendEntriesArgs{
 				LeaderID:     me,
 				Term:         currentTerm,
@@ -561,26 +585,25 @@ func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) error {
 			}
 			reply := AppendEntriesReply{}
 			if !rf.sendAppendEntries(srvID, &args, &reply) {
-				// this peer may dead
-				return
+				tryCnt--
+				goto BEGIN
 			}
 			if reply.Success {
 				rf.mu.Lock()
 				defer rf.mu.Unlock()
 
-				rf.nextIdxs[srvID] = prevLogIndex + len(rf.entries) + 1
-				rf.matchIdxs[srvID] = prevLogIndex + len(entries)
+				rf.nextIdxs[srvID] = prevLogIndex + len(entries)
 				numOfSuccess++
 				if rf.greaterThanMajority(numOfSuccess) {
 					// signal the waiter to commit
-					done <- struct{}{}
 					return
 				}
+				return
 			} else {
 				rf.mu.Lock()
 				defer rf.mu.Unlock()
 
-				rf.LogInfo("healthcheck failed: got term: %v", reply.Term)
+				rf.LogInfo("XXX appendEntries failed: got term: %v", reply.Term)
 				if rf.currentTerm < reply.Term {
 					// we are outdated, become follower
 					rf.state = STATE_FOLLOWER
@@ -589,8 +612,7 @@ func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) error {
 					return
 				}
 				// if failed, we should decrement prevLogEntries and try again
-				prevLogIndex--
-				prevLogEntry = rf.entries[prevLogIndex]
+				rf.nextIdxs[srvID]--
 
 				tryCnt--
 				goto BEGIN
@@ -598,13 +620,13 @@ func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) error {
 		}(srvID, me)
 	}
 
-	<-done
+	wg.Wait()
 
-	rf.LogInfo("Done handleHealthcheck")
+	rf.LogInfo("Done appendEntries")
 
 	rf.electionTimer.Reset(genElectionTimeout())
 
-	if rf.greaterThanMajority(numOfSuccess) {
+	if !rf.greaterThanMajority(numOfSuccess) {
 		return ErrFailedToReplicate
 	}
 	return nil
@@ -622,14 +644,16 @@ func (rf *Raft) changeToLeader(needLock bool) {
 	}
 	rf.state = STATE_LEADER
 	for srvID := range rf.peers {
-		if srvID == rf.me {
-			continue
-		}
 		// 0 [1 2 3]
 		// len: 4
 		// nextIdxs = 4
-		rf.nextIdxs[srvID] = len(rf.entries)
+		rf.nextIdxs[srvID] = rf.offset + len(rf.entries)
+		rf.matchIdxs[srvID] = 0
 	}
+	rf.LogInfo("rf.entries: %v", rf.entries)
+	rf.LogInfo("nextIdxs: %v", rf.nextIdxs)
+	rf.LogInfo("matchIdxs: %v", rf.matchIdxs)
+
 	rf.handleHealthcheck(false)
 }
 
@@ -779,8 +803,10 @@ func Make(peers []*labrpc.ClientEnd, me int,
 	rf.nextIdxs = make([]int, len(peers))
 	rf.matchIdxs = make([]int, len(peers))
 	rf.entries = make([]Entry, 0, 10)
+	// log entry index starts from 1
+	rf.offset = 1
 	// because entry index starts from 1, we add dummy Entry at index 0
-	rf.entries = append(rf.entries, Entry{Term: -1, Cmd: nil})
+	// rf.entries = append(rf.entries, Entry{Term: -1, Cmd: nil})
 
 	// initialize from state persisted before a crash
 	rf.readPersist(persister.ReadRaftState())
