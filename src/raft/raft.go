@@ -254,8 +254,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// $5.3
 	// 2. Reply false if log doesn’t contain an entry at prevLogIndex
 	// whose term matches prevLogTerm (§5.3)
-	curLogIdx := len(rf.entries)
-	if curLogIdx > 1 && rf.entries[args.PrevLogIndex].Term != args.PrevLogTerm {
+	// offset = 1
+	// curLogIndex = offset + len(entries) = 1 + 3 - 1 = 3
+	// [x y z]
+	if rf.lastIdx() != args.PrevLogIndex || rf.entries[args.PrevLogIndex].Term != args.PrevLogTerm {
 		reply.Success, reply.Term = false, rf.currentTerm
 		return
 	}
@@ -264,18 +266,20 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// but different terms), delete the existing entry and all that
 	// follow it (§5.3)
 	begin := args.PrevLogIndex + 1
+	// append if needed
+	last := args.PrevLogIndex + len(args.Entries)
+	if rf.lastIdx() < last {
+		rf.entries = append(rf.entries, args.Entries[rf.lastIdx():last+1]...)
+	}
 	for i := begin; i < begin+len(args.Entries); i++ {
 		// how to compare ?
 		//                5
 		// args:         [][][][]
 		// rf:   [][][][][]
-		if i >= len(rf.entries) {
-			// 4. Append any new entries not already in the log
-			rf.entries = append(rf.entries, args.Entries[i-args.PrevLogIndex-1])
-			continue
-		}
-		if rf.entries[i] != args.Entries[i-args.PrevLogIndex] {
-			rf.entries[i] = args.Entries[i-args.PrevLogIndex]
+		// arg [][x][]
+		// rf. [][y]
+		if rf.entries[i].Term != args.Entries[begin+i].Term {
+			rf.entries[i] = args.Entries[begin+i]
 		}
 	}
 
@@ -298,6 +302,10 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	rf.LogInfo("after append entries: rf.commitIndex: %v entries: %v", rf.commitIndex, rf.entries)
 
 	reply.Success, reply.Term = true, rf.currentTerm
+}
+
+func (rf *Raft) lastIdx() int {
+	return rf.offset + len(rf.entries) - 1
 }
 
 func min(l, r int) int {
