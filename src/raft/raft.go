@@ -251,13 +251,17 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 
 	_ = B2
 
+	var isHeartBeat bool = len(args.Entries) == 0
+
 	// $5.3
 	// 2. Reply false if log doesn’t contain an entry at prevLogIndex
 	// whose term matches prevLogTerm (§5.3)
 	// offset = 1
 	// curLogIndex = offset + len(entries) = 1 + 3 - 1 = 3
 	// [x y z]
-	if rf.lastIdx() != args.PrevLogIndex || rf.entries[args.PrevLogIndex].Term != args.PrevLogTerm {
+	// skip validation for healthcheck
+	// skip when prevLogIndex is 0 (it means it match)
+	if !isHeartBeat && args.PrevLogIndex != 0 && (!(rf.lastIdx() == args.PrevLogIndex) || rf.entries[args.PrevLogIndex].Term != args.PrevLogTerm) {
 		reply.Success, reply.Term = false, rf.currentTerm
 		return
 	}
@@ -267,10 +271,21 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// follow it (§5.3)
 	begin := args.PrevLogIndex + 1
 	// append if needed
-	last := args.PrevLogIndex + len(args.Entries)
+	last := begin + len(args.Entries) - 1
 	if rf.lastIdx() < last {
-		rf.entries = append(rf.entries, args.Entries[rf.lastIdx():last+1]...)
+		// FIXME: How long do we need to append?
+		rf.entries = append(rf.entries, args.Entries[rf.lastIdx()+1:]...)
+
 	}
+	// prev: 1
+	// args   [][][][][]
+	// rf   [][][]
+	// rf.lastIdx = 3
+	// last = 2 + 5 - 1 = 6
+	// append()
+	// rf.lastIdx + 1 = 3 + 1 = 4
+	// should append from args.Entries[2:]
+
 	for i := begin; i < begin+len(args.Entries); i++ {
 		// how to compare ?
 		//                5
