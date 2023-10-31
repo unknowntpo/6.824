@@ -271,12 +271,19 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// follow it (§5.3)
 	begin := args.PrevLogIndex + 1
 	// append if needed
-	last := begin + len(args.Entries) - 1
-	if rf.lastIdx() < last {
-		// FIXME: How long do we need to append?
-		rf.entries = append(rf.entries, args.Entries[rf.lastIdx()+1:]...)
+	lenOfRaftEntries := len(rf.entries) + rf.offset - begin
+	rf.LogInfo("lenOfRaft: %v", lenOfRaftEntries)         // 0
+	rf.LogInfo("len args.Entries: %v", len(args.Entries)) // 1
 
+	rf.LogInfo("entries: %v", rf.entries)
+	if len(args.Entries) > lenOfRaftEntries {
+		rf.entries = append(rf.entries, args.Entries...)
 	}
+
+	// offset0 + []
+	// offset1 + []
+	// if len(args.Entries) > len(rf.entries) + offset1 - offset0
+
 	// prev: 1
 	// args   [][][][][]
 	// rf   [][][]
@@ -286,6 +293,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// rf.lastIdx + 1 = 3 + 1 = 4
 	// should append from args.Entries[2:]
 
+	rf.LogInfo("begin: %v", begin)
+
+	// begin means the start index of entries we need to append
 	for i := begin; i < begin+len(args.Entries); i++ {
 		// how to compare ?
 		//                5
@@ -293,8 +303,8 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 		// rf:   [][][][][]
 		// arg [][x][]
 		// rf. [][y]
-		if rf.entries[i].Term != args.Entries[begin+i].Term {
-			rf.entries[i] = args.Entries[begin+i]
+		if rf.entries[i-rf.offset].Term != args.Entries[i-begin].Term {
+			rf.entries[i-rf.offset] = args.Entries[i-begin]
 		}
 	}
 
