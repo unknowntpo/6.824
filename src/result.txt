@@ -1,0 +1,209 @@
+go test -v -race -count=1 ./raft -run=2B
+=== RUN   TestBasicAgree2B
+Test (2B): basic agreement ...
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[1]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[2]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[0]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[1]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[2]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[0]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[1]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[2]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[0]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[1]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[2]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[0]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[1]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[2]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[0]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[1]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[2]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[0]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[1]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[2]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[0]state[0]term(0): in Start"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[0]state[1]term(1): in handleElection"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[2]state[0]term(0): in RequestVote for req from srv: 0"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[1]state[0]term(0): in RequestVote for req from srv: 0"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[2]state[0]term(1): done handling RequestVote from Raft[0]term[1]: granted: true"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[1]state[0]term(1): done handling RequestVote from Raft[0]term[1]: granted: true"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[0]state[1]term(1): done sending RequestVote to Raft[1], vote granted: true"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[0]state[1]term(1): got 2 vote"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[0]state[1]term(1): win the election, voteCnt: 2"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[0]state[2]term(1): rf.entries: []"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[0]state[2]term(1): nextIdxs: [1 1 1]"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[0]state[2]term(1): matchIdxs: [0 0 0]"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[0]state[2]term(1): in handleHealthcheck"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[0]state[2]term(1): Done handleHealthcheck"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[0]state[2]term(1): done sending RequestVote to Raft[2], vote granted: true"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[2]state[0]term(1): handle AppendEntries request &{Term:1 LeaderID:0 PrevLogIndex:0 PrevLogTerm:0 Entries:[] LeaderCommit:0}"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[2]state[0]term(1): lenOfRaft: 0"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[2]state[0]term(1): len args.Entries: 0"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[2]state[0]term(1): entries: []"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[2]state[0]term(1): begin: 1"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[2]state[0]term(1): after append entries: entries: []"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[2]state[0]term(1): after append entries: rf.commitIndex: 0 entries: []"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[1]state[0]term(1): handle AppendEntries request &{Term:1 LeaderID:0 PrevLogIndex:0 PrevLogTerm:0 Entries:[] LeaderCommit:0}"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[1]state[0]term(1): lenOfRaft: 0"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[1]state[0]term(1): len args.Entries: 0"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[1]state[0]term(1): entries: []"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[1]state[0]term(1): begin: 1"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[1]state[0]term(1): after append entries: entries: []"}
+{"level":"info","time":"2023-11-07T16:28:09+08:00","message":"Raft[1]state[0]term(1): after append entries: rf.commitIndex: 0 entries: []"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): in Start"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): in Start"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): in Start"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): in Start, try to commit cmd: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): in handleAppendEntries"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): entries to be replicated: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): XXX need to do replicate to 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): XXX need to do replicate to 2"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): Done appendEntries"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): got 1 success"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): XXX prevLogIndex: 0"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): XXX prevLogEntries: {0 <nil>}"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): XXX entries to send to srv [2]: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): XXX prevLogIndex: 0"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): XXX prevLogEntries: {0 <nil>}"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): XXX entries to send to srv [1]: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): handle AppendEntries request &{Term:1 LeaderID:0 PrevLogIndex:0 PrevLogTerm:0 Entries:[{Term:1 Cmd:100}] LeaderCommit:0}"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): lenOfRaft: 0"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): handle AppendEntries request &{Term:1 LeaderID:0 PrevLogIndex:0 PrevLogTerm:0 Entries:[{Term:1 Cmd:100}] LeaderCommit:0}"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): lenOfRaft: 0"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): len args.Entries: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): entries: []"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): len args.Entries: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): begin: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): entries: []"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): after append entries: entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): begin: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): after append entries: rf.commitIndex: 0 entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): after append entries: entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): after append entries: rf.commitIndex: 0 entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): in worker, success: srvID: 2"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): got 1 success"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): in worker, success: srvID: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): got 1 success"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): ZZZ judging"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): KKK in Start, done committed cmd: [{1 100}], index: 1, term: 1, isLeader: true"}
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): in handleHealthcheck"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): Done handleHealthcheck"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): handle AppendEntries request &{Term:1 LeaderID:0 PrevLogIndex:0 PrevLogTerm:0 Entries:[] LeaderCommit:0}"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): lenOfRaft: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): len args.Entries: 0"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): begin: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): handle AppendEntries request &{Term:1 LeaderID:0 PrevLogIndex:0 PrevLogTerm:0 Entries:[] LeaderCommit:0}"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): lenOfRaft: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): len args.Entries: 0"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): begin: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): after append entries: entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): after append entries: entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): after append entries: rf.commitIndex: 0 entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): after append entries: rf.commitIndex: 0 entries: [{1 100}]"}
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): in handleHealthcheck"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): Done handleHealthcheck"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): handle AppendEntries request &{Term:1 LeaderID:0 PrevLogIndex:0 PrevLogTerm:0 Entries:[] LeaderCommit:0}"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): handle AppendEntries request &{Term:1 LeaderID:0 PrevLogIndex:0 PrevLogTerm:0 Entries:[] LeaderCommit:0}"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): lenOfRaft: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): lenOfRaft: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): len args.Entries: 0"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): len args.Entries: 0"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): begin: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): after append entries: entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): after append entries: rf.commitIndex: 0 entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): begin: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): after append entries: entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): after append entries: rf.commitIndex: 0 entries: [{1 100}]"}
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): in handleHealthcheck"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): Done handleHealthcheck"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): handle AppendEntries request &{Term:1 LeaderID:0 PrevLogIndex:0 PrevLogTerm:0 Entries:[] LeaderCommit:0}"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): lenOfRaft: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): len args.Entries: 0"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): begin: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): after append entries: entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): after append entries: rf.commitIndex: 0 entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): handle AppendEntries request &{Term:1 LeaderID:0 PrevLogIndex:0 PrevLogTerm:0 Entries:[] LeaderCommit:0}"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): lenOfRaft: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): len args.Entries: 0"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): begin: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): after append entries: entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): after append entries: rf.commitIndex: 0 entries: [{1 100}]"}
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): in handleHealthcheck"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): Done handleHealthcheck"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): handle AppendEntries request &{Term:1 LeaderID:0 PrevLogIndex:0 PrevLogTerm:0 Entries:[] LeaderCommit:0}"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): lenOfRaft: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): len args.Entries: 0"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): begin: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): handle AppendEntries request &{Term:1 LeaderID:0 PrevLogIndex:0 PrevLogTerm:0 Entries:[] LeaderCommit:0}"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): after append entries: entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): lenOfRaft: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): len args.Entries: 0"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): after append entries: rf.commitIndex: 0 entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): begin: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): after append entries: entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): after append entries: rf.commitIndex: 0 entries: [{1 100}]"}
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): in handleHealthcheck"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[0]state[2]term(1): Done handleHealthcheck"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): handle AppendEntries request &{Term:1 LeaderID:0 PrevLogIndex:0 PrevLogTerm:0 Entries:[] LeaderCommit:0}"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): lenOfRaft: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): handle AppendEntries request &{Term:1 LeaderID:0 PrevLogIndex:0 PrevLogTerm:0 Entries:[] LeaderCommit:0}"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): len args.Entries: 0"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): lenOfRaft: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): len args.Entries: 0"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): begin: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): after append entries: entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): begin: 1"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): after append entries: entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[1]state[0]term(1): after append entries: rf.commitIndex: 0 entries: [{1 100}]"}
+{"level":"info","time":"2023-11-07T16:28:10+08:00","message":"Raft[2]state[0]term(1): after append entries: rf.commitIndex: 0 entries: [{1 100}]"}
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging
+    config.go:589: AAA block at judging

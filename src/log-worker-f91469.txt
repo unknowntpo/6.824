@@ -1,0 +1,69 @@
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	loop in running
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	1
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	try to call get jobs
+2023/07/02 07:50:38 Coordinator[]	GetJobs is called for worker f91469bb-e827-40b8-8225-6c27c9e3cb0a
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	get job is called, jobs: [{58ae7794-ef21-422b-b6a6-b972aa86ff15 /Users/unknowntpo/repo/unknowntpo/6.824/src/main/pg-sherlock_holmes.txt 0 0}], err: <nil>
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	loop in running
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	1
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	try to call get jobs
+2023/07/02 07:50:38 Coordinator[]	GetJobs is called for worker f91469bb-e827-40b8-8225-6c27c9e3cb0a
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	get job is called, jobs: [{60731b3a-daf4-4b72-93b5-95c904350729 /Users/unknowntpo/repo/unknowntpo/6.824/src/main/pg-frankenstein.txt 0 0}], err: <nil>
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	loop in running
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	1
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	try to call get jobs
+2023/07/02 07:50:38 Coordinator[]	GetJobs is called for worker f91469bb-e827-40b8-8225-6c27c9e3cb0a
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	get job is called, jobs: [{dbef3a11-aa5f-41b5-9a1d-ae193a4f9ecf /Users/unknowntpo/repo/unknowntpo/6.824/src/main/pg-being_ernest.txt 0 0}], err: <nil>
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	loop in running
+2023/07/02 07:50:38 Coordinator[]	FinishJob is called for workerID: f91469bb-e827-40b8-8225-6c27c9e3cb0a, jobID: dbef3a11-aa5f-41b5-9a1d-ae193a4f9ecf
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	end of worker.handleJobs
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	1
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	try to call get jobs
+2023/07/02 07:50:38 Coordinator[]	GetJobs is called for worker f91469bb-e827-40b8-8225-6c27c9e3cb0a
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	get job is called, jobs: [{c7910599-e104-4ed1-8932-64dc77d0579b /Users/unknowntpo/repo/unknowntpo/6.824/src/main/pg-metamorphosis.txt 0 0}], err: <nil>
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	loop in running
+2023/07/02 07:50:38 Coordinator[]	FinishJob is called for workerID: f91469bb-e827-40b8-8225-6c27c9e3cb0a, jobID: 58ae7794-ef21-422b-b6a6-b972aa86ff15
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	end of worker.handleJobs
+2023/07/02 07:50:38 Coordinator[]	FinishJob is called for workerID: f91469bb-e827-40b8-8225-6c27c9e3cb0a, jobID: 60731b3a-daf4-4b72-93b5-95c904350729
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	end of worker.handleJobs
+2023/07/02 07:50:38 Coordinator[]	FinishJob is called for workerID: f91469bb-e827-40b8-8225-6c27c9e3cb0a, jobID: c7910599-e104-4ed1-8932-64dc77d0579b
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	end of worker.handleJobs
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	1
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	try to call get jobs
+2023/07/02 07:50:38 Coordinator[]	GetJobs is called for worker f91469bb-e827-40b8-8225-6c27c9e3cb0a
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	get job is called, jobs: [{e81f725a-06f8-426b-ad7a-9626ac79b6c3  1 0}], err: <nil>
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	loop in running
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	1
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	try to call get jobs
+2023/07/02 07:50:38 Coordinator[]	GetJobs is called for worker f91469bb-e827-40b8-8225-6c27c9e3cb0a
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	get job is called, jobs: [{d53d1e06-6177-474a-bb31-52fc5d982874  1 3}], err: <nil>
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	loop in running
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	1
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	try to call get jobs
+2023/07/02 07:50:38 Coordinator[]	GetJobs is called for worker f91469bb-e827-40b8-8225-6c27c9e3cb0a
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	get job is called, jobs: [{23242e27-9c8b-44d0-b4a9-037e4c9356fe  1 4}], err: <nil>
+2023/07/02 07:50:38 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	loop in running
+2023/07/02 07:50:39 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	1
+2023/07/02 07:50:39 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	try to call get jobs
+2023/07/02 07:50:39 Coordinator[]	GetJobs is called for worker f91469bb-e827-40b8-8225-6c27c9e3cb0a
+2023/07/02 07:50:39 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	get job is called, jobs: [{6f16eaf6-ec1d-43ca-95d0-b7d17e76d544  1 6}], err: <nil>
+2023/07/02 07:50:39 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	loop in running
+2023/07/02 07:50:39 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	1
+2023/07/02 07:50:39 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	try to call get jobs
+2023/07/02 07:50:39 Coordinator[]	GetJobs is called for worker f91469bb-e827-40b8-8225-6c27c9e3cb0a
+2023/07/02 07:50:39 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	get job is called, jobs: [{c79f437f-1fec-49e1-ac3c-8eafebb26b2c  1 9}], err: <nil>
+2023/07/02 07:50:39 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	loop in running
+2023/07/02 07:50:39 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	loop in running
+2023/07/02 07:50:39 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	1
+2023/07/02 07:50:39 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	try to call get jobs
+2023/07/02 07:50:39 Coordinator[]	GetJobs is called for worker f91469bb-e827-40b8-8225-6c27c9e3cb0a
+2023/07/02 07:50:39 Coordinator[]	FinishJob is called for workerID: f91469bb-e827-40b8-8225-6c27c9e3cb0a, jobID: e81f725a-06f8-426b-ad7a-9626ac79b6c3
+2023/07/02 07:50:39 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	end of worker.handleJobs
+2023/07/02 07:50:39 Coordinator[]	FinishJob is called for workerID: f91469bb-e827-40b8-8225-6c27c9e3cb0a, jobID: d53d1e06-6177-474a-bb31-52fc5d982874
+2023/07/02 07:50:39 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	end of worker.handleJobs
+2023/07/02 07:50:39 Coordinator[]	FinishJob is called for workerID: f91469bb-e827-40b8-8225-6c27c9e3cb0a, jobID: 23242e27-9c8b-44d0-b4a9-037e4c9356fe
+2023/07/02 07:50:39 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	end of worker.handleJobs
+2023/07/02 07:50:39 Coordinator[]	FinishJob is called for workerID: f91469bb-e827-40b8-8225-6c27c9e3cb0a, jobID: c79f437f-1fec-49e1-ac3c-8eafebb26b2c
+2023/07/02 07:50:39 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	end of worker.handleJobs
+2023/07/02 07:50:39 Coordinator[]	FinishJob is called for workerID: f91469bb-e827-40b8-8225-6c27c9e3cb0a, jobID: 6f16eaf6-ec1d-43ca-95d0-b7d17e76d544
+2023/07/02 07:50:39 WORKER[f91469bb-e827-40b8-8225-6c27c9e3cb0a]	end of worker.handleJobs
+	"f91469bb-e827-40b8-8225-6c27c9e3cb0a": {}

@@ -1,0 +1,44 @@
+dsfsadf
+func()
+func(fasdfsdf%0)
+
+ }
+nReduce = 4
+
+Inter file for mr-1234:
+
+input:
+
+pg-xxx.txt
+
+abc
+
+pg-yyy.txt
+
+abc
+
+---
+
+mr-1234-0
+mr-1234-1
+mr-1234-2
+mr-1234-3
+
+mr-5678-0
+mr-5678-1
+mr-5678-2
+mr-5678-3
+
+// want
+
+reducerWorkerA:
+mr-<ihash>-0
+
+reducerWorkerB:
+mr-<ihash>-1
+...
+
+mr-out-0
+mr-out-1
+mr-out-2
+mr-out-3

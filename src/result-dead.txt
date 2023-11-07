@@ -1,0 +1,512 @@
+❯ pgrep -l "mrworker|mrcoordinator" | xargs pkill
+❯ pgrep -l "mrworker|mrcoordinator" | xargs pkill
+❯ make mr/test/once
+cd main && bash test-mr.sh
+*** Starting crash test.
+2023/07/08 08:24:28 Coordinator[]       length of jobs: 1
+2023/07/08 08:24:28 Coordinator[]       length of jobs: 2
+2023/07/08 08:24:28 Coordinator[]       length of jobs: 3
+2023/07/08 08:24:28 Coordinator[]       length of jobs: 4
+2023/07/08 08:24:28 Coordinator[]       length of jobs: 5
+2023/07/08 08:24:28 Coordinator[]       length of jobs: 6
+2023/07/08 08:24:28 Coordinator[]       length of jobs: 7
+2023/07/08 08:24:28 Coordinator[]       length of jobs: 8
+2023/07/08 08:24:29 Coordinator[]       checkWorkerAliveness
+2023/07/08 08:24:29 Coordinator[]       liveness: map[]
+2023/07/08 08:24:30 Coordinator[]       GetJobs is called for worker afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, req[87cd8f18-3cc0-4eef-9bcc-017920277233]
+2023/07/08 08:24:30 Coordinator[]       after isDonePhase check, worker afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, req[87cd8f18-3cc0-4eef-9bcc-017920277233]
+2023/07/08 08:24:30 Coordinator[]       before c.workerMap.AddJob, worker afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, req[87cd8f18-3cc0-4eef-9bcc-017920277233]
+2023/07/08 08:24:30 Coordinator[]       job is added worker afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, req[87cd8f18-3cc0-4eef-9bcc-017920277233]
+2023/07/08 08:24:30 Coordinator[]       GetJobs is called for worker fb26035a-d182-4374-b204-49f68e18262b, req[1db8c0c7-1408-449d-93f6-3872c8aa1194]
+2023/07/08 08:24:30 Coordinator[]       after isDonePhase check, worker fb26035a-d182-4374-b204-49f68e18262b, req[1db8c0c7-1408-449d-93f6-3872c8aa1194]
+2023/07/08 08:24:30 Coordinator[]       before c.workerMap.AddJob, worker fb26035a-d182-4374-b204-49f68e18262b, req[1db8c0c7-1408-449d-93f6-3872c8aa1194]
+2023/07/08 08:24:30 Coordinator[]       job is added worker fb26035a-d182-4374-b204-49f68e18262b, req[1db8c0c7-1408-449d-93f6-3872c8aa1194]
+2023/07/08 08:24:30 WORKER[afb2cbc7-3471-4e75-b624-2aa3ec69bd7d]        got job: {afa6e802-f32d-4fc9-9482-1da25bc7d8cc ../pg-being_ernest.txt 0 0}
+2023/07/08 08:24:30 WORKER[fb26035a-d182-4374-b204-49f68e18262b]        got job: {341c5e47-3db6-4063-a097-f9037393b45e ../pg-dorian_gray.txt 0 0}
+2023/07/08 08:24:30 Coordinator[]       GetJobs is called for worker 17f57cc4-59b5-4291-8135-12488efb739b, req[4d8cc2d0-b870-4356-9420-48de235e0932]
+2023/07/08 08:24:30 Coordinator[]       after isDonePhase check, worker 17f57cc4-59b5-4291-8135-12488efb739b, req[4d8cc2d0-b870-4356-9420-48de235e0932]
+2023/07/08 08:24:30 Coordinator[]       before c.workerMap.AddJob, worker 17f57cc4-59b5-4291-8135-12488efb739b, req[4d8cc2d0-b870-4356-9420-48de235e0932]
+2023/07/08 08:24:30 Coordinator[]       job is added worker 17f57cc4-59b5-4291-8135-12488efb739b, req[4d8cc2d0-b870-4356-9420-48de235e0932]
+2023/07/08 08:24:30 Coordinator[]       GetJobs is called for worker 4696cd59-2bc0-45cf-a7b1-bd9d49c789ac, req[eb45185c-7cc9-4539-be7d-d34a01182d4c]
+2023/07/08 08:24:30 Coordinator[]       after isDonePhase check, worker 4696cd59-2bc0-45cf-a7b1-bd9d49c789ac, req[eb45185c-7cc9-4539-be7d-d34a01182d4c]
+2023/07/08 08:24:30 Coordinator[]       before c.workerMap.AddJob, worker 4696cd59-2bc0-45cf-a7b1-bd9d49c789ac, req[eb45185c-7cc9-4539-be7d-d34a01182d4c]
+2023/07/08 08:24:30 Coordinator[]       job is added worker 4696cd59-2bc0-45cf-a7b1-bd9d49c789ac, req[eb45185c-7cc9-4539-be7d-d34a01182d4c]
+2023/07/08 08:24:30 WORKER[17f57cc4-59b5-4291-8135-12488efb739b]        got job: {848632cb-1b69-49c6-b605-573185a10a68 ../pg-frankenstein.txt 0 0}
+2023/07/08 08:24:30 WORKER[4696cd59-2bc0-45cf-a7b1-bd9d49c789ac]        got job: {4f12c2e3-2ee3-4cbf-8a1c-8a6af9b15bd5 ../pg-grimm.txt 0 0}
+2023/07/08 08:24:30 Coordinator[]       FinishJob is called for workerID: fb26035a-d182-4374-b204-49f68e18262b, jobID: 341c5e47-3db6-4063-a097-f9037393b45e
+2023/07/08 08:24:30 WORKER[fb26035a-d182-4374-b204-49f68e18262b]        end of worker.handleJobs
+2023/07/08 08:24:30 Coordinator[]       FinishJob is called for workerID: 4696cd59-2bc0-45cf-a7b1-bd9d49c789ac, jobID: 4f12c2e3-2ee3-4cbf-8a1c-8a6af9b15bd5
+2023/07/08 08:24:30 WORKER[4696cd59-2bc0-45cf-a7b1-bd9d49c789ac]        end of worker.handleJobs
+2023/07/08 08:24:30 Coordinator[]       GetJobs is called for worker 4696cd59-2bc0-45cf-a7b1-bd9d49c789ac, req[4f57f8c8-b538-4664-85a2-25353f14e9c7]
+2023/07/08 08:24:30 Coordinator[]       after isDonePhase check, worker 4696cd59-2bc0-45cf-a7b1-bd9d49c789ac, req[4f57f8c8-b538-4664-85a2-25353f14e9c7]
+2023/07/08 08:24:30 Coordinator[]       before c.workerMap.AddJob, worker 4696cd59-2bc0-45cf-a7b1-bd9d49c789ac, req[4f57f8c8-b538-4664-85a2-25353f14e9c7]
+2023/07/08 08:24:30 Coordinator[]       job is added worker 4696cd59-2bc0-45cf-a7b1-bd9d49c789ac, req[4f57f8c8-b538-4664-85a2-25353f14e9c7]
+2023/07/08 08:24:30 WORKER[4696cd59-2bc0-45cf-a7b1-bd9d49c789ac]        got job: {e3fb636c-c2fa-4100-b20e-a1dc37245e11 ../pg-huckleberry_finn.txt 0 0}
+2023/07/08 08:24:30 Coordinator[]       GetJobs is called for worker fb26035a-d182-4374-b204-49f68e18262b, req[fc5f7f92-0c52-4969-81d3-8f8f07385350]
+2023/07/08 08:24:30 Coordinator[]       after isDonePhase check, worker fb26035a-d182-4374-b204-49f68e18262b, req[fc5f7f92-0c52-4969-81d3-8f8f07385350]
+2023/07/08 08:24:30 Coordinator[]       before c.workerMap.AddJob, worker fb26035a-d182-4374-b204-49f68e18262b, req[fc5f7f92-0c52-4969-81d3-8f8f07385350]
+2023/07/08 08:24:30 Coordinator[]       job is added worker fb26035a-d182-4374-b204-49f68e18262b, req[fc5f7f92-0c52-4969-81d3-8f8f07385350]
+2023/07/08 08:24:30 WORKER[fb26035a-d182-4374-b204-49f68e18262b]        got job: {10eb0acb-a938-4686-8ad5-06cd9a394d93 ../pg-metamorphosis.txt 0 0}
+2023/07/08 08:24:30 Coordinator[]       checkWorkerAliveness
+2023/07/08 08:24:30 Coordinator[]       liveness: map[]
+RPCMailBox: calling MarkHealthy for worker[afb2cbc7-3471-4e75-b624-2aa3ec69bd7d], req:[1efb9597-88ae-43fc-9971-7faafd90416f]
+RPCMailBox: calling MarkHealthy for worker[4696cd59-2bc0-45cf-a7b1-bd9d49c789ac], req:[d9c66e91-dba0-4253-b3ef-cd0dfdf4f7f0]
+2023/07/08 08:24:31 Coordinator[]       MarkHealthy is called for workerID: afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, ReqID: 1efb9597-88ae-43fc-9971-7faafd90416f
+2023/07/08 08:24:31 Coordinator[]       got deadMap lock
+2023/07/08 08:24:31 Coordinator[]       healthy is marked: {
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": false
+}
+2023/07/08 08:24:31 Coordinator[]       MarkHealthy is called for workerID: 4696cd59-2bc0-45cf-a7b1-bd9d49c789ac, ReqID: d9c66e91-dba0-4253-b3ef-cd0dfdf4f7f0
+2023/07/08 08:24:31 Coordinator[]       got deadMap lock
+2023/07/08 08:24:31 Coordinator[]       healthy is marked: {
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": false,
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": false
+}
+2023/07/08 08:24:31 Coordinator[]       GetJobs is called for worker 9b564017-c702-4863-a520-5dcac8b8842c, req[73ef16a1-5db4-415c-aea1-0c9e938d7b11]
+2023/07/08 08:24:31 Coordinator[]       after isDonePhase check, worker 9b564017-c702-4863-a520-5dcac8b8842c, req[73ef16a1-5db4-415c-aea1-0c9e938d7b11]
+2023/07/08 08:24:31 Coordinator[]       before c.workerMap.AddJob, worker 9b564017-c702-4863-a520-5dcac8b8842c, req[73ef16a1-5db4-415c-aea1-0c9e938d7b11]
+2023/07/08 08:24:31 Coordinator[]       job is added worker 9b564017-c702-4863-a520-5dcac8b8842c, req[73ef16a1-5db4-415c-aea1-0c9e938d7b11]
+2023/07/08 08:24:31 WORKER[9b564017-c702-4863-a520-5dcac8b8842c]        got job: {cdfa72c7-fff3-4e1e-818a-76f6f0d43629 ../pg-sherlock_holmes.txt 0 0}
+2023/07/08 08:24:31 Coordinator[]       FinishJob is called for workerID: 9b564017-c702-4863-a520-5dcac8b8842c, jobID: cdfa72c7-fff3-4e1e-818a-76f6f0d43629
+2023/07/08 08:24:31 WORKER[9b564017-c702-4863-a520-5dcac8b8842c]        end of worker.handleJobs
+2023/07/08 08:24:31 Coordinator[]       GetJobs is called for worker 9b564017-c702-4863-a520-5dcac8b8842c, req[ef91da49-7909-47b4-b767-bc3d128895bc]
+2023/07/08 08:24:31 Coordinator[]       after isDonePhase check, worker 9b564017-c702-4863-a520-5dcac8b8842c, req[ef91da49-7909-47b4-b767-bc3d128895bc]
+2023/07/08 08:24:31 Coordinator[]       before c.workerMap.AddJob, worker 9b564017-c702-4863-a520-5dcac8b8842c, req[ef91da49-7909-47b4-b767-bc3d128895bc]
+2023/07/08 08:24:31 Coordinator[]       job is added worker 9b564017-c702-4863-a520-5dcac8b8842c, req[ef91da49-7909-47b4-b767-bc3d128895bc]
+2023/07/08 08:24:31 WORKER[9b564017-c702-4863-a520-5dcac8b8842c]        got job: {bb0b7ad1-34e8-4646-a292-cb7be5e8c7c6 ../pg-tom_sawyer.txt 0 0}
+2023/07/08 08:24:31 Coordinator[]       FinishJob is called for workerID: 9b564017-c702-4863-a520-5dcac8b8842c, jobID: bb0b7ad1-34e8-4646-a292-cb7be5e8c7c6
+2023/07/08 08:24:31 WORKER[9b564017-c702-4863-a520-5dcac8b8842c]        end of worker.handleJobs
+2023/07/08 08:24:31 Coordinator[]       GetJobs is called for worker 9b564017-c702-4863-a520-5dcac8b8842c, req[c04ec5cd-c6c7-40dd-ae29-299450cd1d2b]
+2023/07/08 08:24:31 Coordinator[]       after isDonePhase check, worker 9b564017-c702-4863-a520-5dcac8b8842c, req[c04ec5cd-c6c7-40dd-ae29-299450cd1d2b]
+2023/07/08 08:24:31 Coordinator[]       after c.JobQueue.GetJob, worker 9b564017-c702-4863-a520-5dcac8b8842c, req[c04ec5cd-c6c7-40dd-ae29-299450cd1d2b], err no job right now
+2023/07/08 08:24:31 Coordinator[]       workerMap: {
+        "17f57cc4-59b5-4291-8135-12488efb739b": {
+                "848632cb-1b69-49c6-b605-573185a10a68": {
+                        "ID": "848632cb-1b69-49c6-b605-573185a10a68",
+                        "FileName": "../pg-frankenstein.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": {
+                "e3fb636c-c2fa-4100-b20e-a1dc37245e11": {
+                        "ID": "e3fb636c-c2fa-4100-b20e-a1dc37245e11",
+                        "FileName": "../pg-huckleberry_finn.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "9b564017-c702-4863-a520-5dcac8b8842c": {},
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": {
+                "afa6e802-f32d-4fc9-9482-1da25bc7d8cc": {
+                        "ID": "afa6e802-f32d-4fc9-9482-1da25bc7d8cc",
+                        "FileName": "../pg-being_ernest.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "fb26035a-d182-4374-b204-49f68e18262b": {
+                "10eb0acb-a938-4686-8ad5-06cd9a394d93": {
+                        "ID": "10eb0acb-a938-4686-8ad5-06cd9a394d93",
+                        "FileName": "../pg-metamorphosis.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        }
+}
+incall, err no job right now
+2023/07/08 08:24:31 WORKER[9b564017-c702-4863-a520-5dcac8b8842c]        no job
+2023/07/08 08:24:31 Coordinator[]       checkWorkerAliveness
+2023/07/08 08:24:31 Coordinator[]       liveness: map[4696cd59-2bc0-45cf-a7b1-bd9d49c789ac:true afb2cbc7-3471-4e75-b624-2aa3ec69bd7d:true]
+RPCMailBox: calling MarkHealthy for worker[afb2cbc7-3471-4e75-b624-2aa3ec69bd7d], req:[0fd04d23-afa2-469f-be06-ec242de0f2d7]
+RPCMailBox: calling MarkHealthy for worker[4696cd59-2bc0-45cf-a7b1-bd9d49c789ac], req:[52cde1f5-56c5-43cb-89b2-5a4f09aa152e]
+2023/07/08 08:24:32 Coordinator[]       MarkHealthy is called for workerID: afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, ReqID: 0fd04d23-afa2-469f-be06-ec242de0f2d7
+2023/07/08 08:24:32 Coordinator[]       got deadMap lock
+2023/07/08 08:24:32 Coordinator[]       MarkHealthy is called for workerID: 4696cd59-2bc0-45cf-a7b1-bd9d49c789ac, ReqID: 52cde1f5-56c5-43cb-89b2-5a4f09aa152e
+2023/07/08 08:24:32 Coordinator[]       healthy is marked: {
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": true,
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": false
+}
+2023/07/08 08:24:32 Coordinator[]       got deadMap lock
+2023/07/08 08:24:32 Coordinator[]       healthy is marked: {
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": false,
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": false
+}
+2023/07/08 08:24:32 Coordinator[]       GetJobs is called for worker 9b564017-c702-4863-a520-5dcac8b8842c, req[c69fe03d-21d0-43c9-8573-f4e95b6ea7e0]
+2023/07/08 08:24:32 Coordinator[]       after isDonePhase check, worker 9b564017-c702-4863-a520-5dcac8b8842c, req[c69fe03d-21d0-43c9-8573-f4e95b6ea7e0]
+2023/07/08 08:24:32 Coordinator[]       after c.JobQueue.GetJob, worker 9b564017-c702-4863-a520-5dcac8b8842c, req[c69fe03d-21d0-43c9-8573-f4e95b6ea7e0], err no job right now
+2023/07/08 08:24:32 Coordinator[]       workerMap: {
+        "17f57cc4-59b5-4291-8135-12488efb739b": {
+                "848632cb-1b69-49c6-b605-573185a10a68": {
+                        "ID": "848632cb-1b69-49c6-b605-573185a10a68",
+                        "FileName": "../pg-frankenstein.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": {
+                "e3fb636c-c2fa-4100-b20e-a1dc37245e11": {
+                        "ID": "e3fb636c-c2fa-4100-b20e-a1dc37245e11",
+                        "FileName": "../pg-huckleberry_finn.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "9b564017-c702-4863-a520-5dcac8b8842c": {},
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": {
+                "afa6e802-f32d-4fc9-9482-1da25bc7d8cc": {
+                        "ID": "afa6e802-f32d-4fc9-9482-1da25bc7d8cc",
+                        "FileName": "../pg-being_ernest.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "fb26035a-d182-4374-b204-49f68e18262b": {
+                "10eb0acb-a938-4686-8ad5-06cd9a394d93": {
+                        "ID": "10eb0acb-a938-4686-8ad5-06cd9a394d93",
+                        "FileName": "../pg-metamorphosis.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        }
+}
+incall, err no job right now
+2023/07/08 08:24:32 WORKER[9b564017-c702-4863-a520-5dcac8b8842c]        no job
+RPCMailBox: calling MarkHealthy for worker[9b564017-c702-4863-a520-5dcac8b8842c], req:[25b380b2-7a58-4dc4-8160-01c798a22dac]
+2023/07/08 08:24:32 Coordinator[]       MarkHealthy is called for workerID: 9b564017-c702-4863-a520-5dcac8b8842c, ReqID: 25b380b2-7a58-4dc4-8160-01c798a22dac
+2023/07/08 08:24:32 Coordinator[]       got deadMap lock
+2023/07/08 08:24:32 Coordinator[]       healthy is marked: {
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": false,
+        "9b564017-c702-4863-a520-5dcac8b8842c": false,
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": false
+}
+2023/07/08 08:24:32 Coordinator[]       FinishJob is called for workerID: afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, jobID: afa6e802-f32d-4fc9-9482-1da25bc7d8cc
+2023/07/08 08:24:32 WORKER[afb2cbc7-3471-4e75-b624-2aa3ec69bd7d]        end of worker.handleJobs
+2023/07/08 08:24:32 Coordinator[]       GetJobs is called for worker afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, req[8b47d95e-8307-42bc-9313-f9fead6cbed7]
+2023/07/08 08:24:32 Coordinator[]       after isDonePhase check, worker afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, req[8b47d95e-8307-42bc-9313-f9fead6cbed7]
+2023/07/08 08:24:32 Coordinator[]       after c.JobQueue.GetJob, worker afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, req[8b47d95e-8307-42bc-9313-f9fead6cbed7], err no job right now
+2023/07/08 08:24:32 Coordinator[]       workerMap: {
+        "17f57cc4-59b5-4291-8135-12488efb739b": {
+                "848632cb-1b69-49c6-b605-573185a10a68": {
+                        "ID": "848632cb-1b69-49c6-b605-573185a10a68",
+                        "FileName": "../pg-frankenstein.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": {
+                "e3fb636c-c2fa-4100-b20e-a1dc37245e11": {
+                        "ID": "e3fb636c-c2fa-4100-b20e-a1dc37245e11",
+                        "FileName": "../pg-huckleberry_finn.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "9b564017-c702-4863-a520-5dcac8b8842c": {},
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": {},
+        "fb26035a-d182-4374-b204-49f68e18262b": {
+                "10eb0acb-a938-4686-8ad5-06cd9a394d93": {
+                        "ID": "10eb0acb-a938-4686-8ad5-06cd9a394d93",
+                        "FileName": "../pg-metamorphosis.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        }
+}
+incall, err no job right now
+2023/07/08 08:24:32 WORKER[afb2cbc7-3471-4e75-b624-2aa3ec69bd7d]        no job
+2023/07/08 08:24:32 Coordinator[]       GetJobs is called for worker 9b564017-c702-4863-a520-5dcac8b8842c, req[07ad27f9-5b98-4f98-bfe9-96dd38a2a394]
+2023/07/08 08:24:32 Coordinator[]       after isDonePhase check, worker 9b564017-c702-4863-a520-5dcac8b8842c, req[07ad27f9-5b98-4f98-bfe9-96dd38a2a394]
+2023/07/08 08:24:32 Coordinator[]       after c.JobQueue.GetJob, worker 9b564017-c702-4863-a520-5dcac8b8842c, req[07ad27f9-5b98-4f98-bfe9-96dd38a2a394], err no job right now
+2023/07/08 08:24:32 Coordinator[]       workerMap: {
+        "17f57cc4-59b5-4291-8135-12488efb739b": {
+                "848632cb-1b69-49c6-b605-573185a10a68": {
+                        "ID": "848632cb-1b69-49c6-b605-573185a10a68",
+                        "FileName": "../pg-frankenstein.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": {
+                "e3fb636c-c2fa-4100-b20e-a1dc37245e11": {
+                        "ID": "e3fb636c-c2fa-4100-b20e-a1dc37245e11",
+                        "FileName": "../pg-huckleberry_finn.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "9b564017-c702-4863-a520-5dcac8b8842c": {},
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": {},
+        "fb26035a-d182-4374-b204-49f68e18262b": {
+                "10eb0acb-a938-4686-8ad5-06cd9a394d93": {
+                        "ID": "10eb0acb-a938-4686-8ad5-06cd9a394d93",
+                        "FileName": "../pg-metamorphosis.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        }
+}
+incall, err no job right now
+2023/07/08 08:24:32 WORKER[9b564017-c702-4863-a520-5dcac8b8842c]        no job
+2023/07/08 08:24:32 Coordinator[]       checkWorkerAliveness
+2023/07/08 08:24:32 Coordinator[]       liveness: map[4696cd59-2bc0-45cf-a7b1-bd9d49c789ac:true 9b564017-c702-4863-a520-5dcac8b8842c:true afb2cbc7-3471-4e75-b624-2aa3ec69bd7d:true]
+RPCMailBox: calling MarkHealthy for worker[afb2cbc7-3471-4e75-b624-2aa3ec69bd7d], req:[279fb6c7-8aa4-412a-b753-7c1693b3dc73]
+RPCMailBox: calling MarkHealthy for worker[4696cd59-2bc0-45cf-a7b1-bd9d49c789ac], req:[bffb516f-55a0-4570-8874-08669d94f8c2]
+2023/07/08 08:24:33 Coordinator[]       MarkHealthy is called for workerID: afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, ReqID: 279fb6c7-8aa4-412a-b753-7c1693b3dc73
+2023/07/08 08:24:33 Coordinator[]       got deadMap lock
+2023/07/08 08:24:33 Coordinator[]       GetJobs is called for worker afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, req[b3daa442-415a-4e2f-b72a-1874d2f5cbb0]
+2023/07/08 08:24:33 Coordinator[]       after isDonePhase check, worker afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, req[b3daa442-415a-4e2f-b72a-1874d2f5cbb0]
+2023/07/08 08:24:33 Coordinator[]       after c.JobQueue.GetJob, worker afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, req[b3daa442-415a-4e2f-b72a-1874d2f5cbb0], err no job right now
+2023/07/08 08:24:33 Coordinator[]       healthy is marked: {
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": true,
+        "9b564017-c702-4863-a520-5dcac8b8842c": true,
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": false
+}
+2023/07/08 08:24:33 Coordinator[]       workerMap: {
+        "17f57cc4-59b5-4291-8135-12488efb739b": {
+                "848632cb-1b69-49c6-b605-573185a10a68": {
+                        "ID": "848632cb-1b69-49c6-b605-573185a10a68",
+                        "FileName": "../pg-frankenstein.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": {
+                "e3fb636c-c2fa-4100-b20e-a1dc37245e11": {
+                        "ID": "e3fb636c-c2fa-4100-b20e-a1dc37245e11",
+                        "FileName": "../pg-huckleberry_finn.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "9b564017-c702-4863-a520-5dcac8b8842c": {},
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": {},
+        "fb26035a-d182-4374-b204-49f68e18262b": {
+                "10eb0acb-a938-4686-8ad5-06cd9a394d93": {
+                        "ID": "10eb0acb-a938-4686-8ad5-06cd9a394d93",
+                        "FileName": "../pg-metamorphosis.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        }
+}
+2023/07/08 08:24:33 Coordinator[]       MarkHealthy is called for workerID: 4696cd59-2bc0-45cf-a7b1-bd9d49c789ac, ReqID: bffb516f-55a0-4570-8874-08669d94f8c2
+2023/07/08 08:24:33 Coordinator[]       got deadMap lock
+2023/07/08 08:24:33 Coordinator[]       healthy is marked: {
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": false,
+        "9b564017-c702-4863-a520-5dcac8b8842c": true,
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": false
+}
+incall, err no job right now
+2023/07/08 08:24:33 WORKER[afb2cbc7-3471-4e75-b624-2aa3ec69bd7d]        no job
+2023/07/08 08:24:33 Coordinator[]       GetJobs is called for worker 9b564017-c702-4863-a520-5dcac8b8842c, req[f1e1f3aa-b9ea-49c9-a65d-b33223346d07]
+2023/07/08 08:24:33 Coordinator[]       after isDonePhase check, worker 9b564017-c702-4863-a520-5dcac8b8842c, req[f1e1f3aa-b9ea-49c9-a65d-b33223346d07]
+2023/07/08 08:24:33 Coordinator[]       after c.JobQueue.GetJob, worker 9b564017-c702-4863-a520-5dcac8b8842c, req[f1e1f3aa-b9ea-49c9-a65d-b33223346d07], err no job right now
+2023/07/08 08:24:33 Coordinator[]       workerMap: {
+        "17f57cc4-59b5-4291-8135-12488efb739b": {
+                "848632cb-1b69-49c6-b605-573185a10a68": {
+                        "ID": "848632cb-1b69-49c6-b605-573185a10a68",
+                        "FileName": "../pg-frankenstein.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": {
+                "e3fb636c-c2fa-4100-b20e-a1dc37245e11": {
+                        "ID": "e3fb636c-c2fa-4100-b20e-a1dc37245e11",
+                        "FileName": "../pg-huckleberry_finn.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "9b564017-c702-4863-a520-5dcac8b8842c": {},
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": {},
+        "fb26035a-d182-4374-b204-49f68e18262b": {
+                "10eb0acb-a938-4686-8ad5-06cd9a394d93": {
+                        "ID": "10eb0acb-a938-4686-8ad5-06cd9a394d93",
+                        "FileName": "../pg-metamorphosis.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        }
+}
+incall, err no job right now
+2023/07/08 08:24:33 WORKER[9b564017-c702-4863-a520-5dcac8b8842c]        no job
+RPCMailBox: calling MarkHealthy for worker[9b564017-c702-4863-a520-5dcac8b8842c], req:[71cad951-d645-48f6-9fe3-1a58fb976d69]
+2023/07/08 08:24:33 Coordinator[]       MarkHealthy is called for workerID: 9b564017-c702-4863-a520-5dcac8b8842c, ReqID: 71cad951-d645-48f6-9fe3-1a58fb976d69
+2023/07/08 08:24:33 Coordinator[]       got deadMap lock
+2023/07/08 08:24:33 Coordinator[]       healthy is marked: {
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": false,
+        "9b564017-c702-4863-a520-5dcac8b8842c": false,
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": false
+}
+2023/07/08 08:24:33 Coordinator[]       GetJobs is called for worker afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, req[d5b1c08e-3de2-4161-86cf-5ab77c2c908f]
+2023/07/08 08:24:33 Coordinator[]       after isDonePhase check, worker afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, req[d5b1c08e-3de2-4161-86cf-5ab77c2c908f]
+2023/07/08 08:24:33 Coordinator[]       after c.JobQueue.GetJob, worker afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, req[d5b1c08e-3de2-4161-86cf-5ab77c2c908f], err no job right now
+2023/07/08 08:24:33 Coordinator[]       workerMap: {
+        "17f57cc4-59b5-4291-8135-12488efb739b": {
+                "848632cb-1b69-49c6-b605-573185a10a68": {
+                        "ID": "848632cb-1b69-49c6-b605-573185a10a68",
+                        "FileName": "../pg-frankenstein.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": {
+                "e3fb636c-c2fa-4100-b20e-a1dc37245e11": {
+                        "ID": "e3fb636c-c2fa-4100-b20e-a1dc37245e11",
+                        "FileName": "../pg-huckleberry_finn.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "9b564017-c702-4863-a520-5dcac8b8842c": {},
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": {},
+        "fb26035a-d182-4374-b204-49f68e18262b": {
+                "10eb0acb-a938-4686-8ad5-06cd9a394d93": {
+                        "ID": "10eb0acb-a938-4686-8ad5-06cd9a394d93",
+                        "FileName": "../pg-metamorphosis.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        }
+}
+incall, err no job right now
+2023/07/08 08:24:33 WORKER[afb2cbc7-3471-4e75-b624-2aa3ec69bd7d]        no job
+2023/07/08 08:24:33 Coordinator[]       GetJobs is called for worker 9b564017-c702-4863-a520-5dcac8b8842c, req[6cce2ffa-a0fd-422a-aa46-1f7c871d0837]
+2023/07/08 08:24:33 Coordinator[]       after isDonePhase check, worker 9b564017-c702-4863-a520-5dcac8b8842c, req[6cce2ffa-a0fd-422a-aa46-1f7c871d0837]
+2023/07/08 08:24:33 Coordinator[]       after c.JobQueue.GetJob, worker 9b564017-c702-4863-a520-5dcac8b8842c, req[6cce2ffa-a0fd-422a-aa46-1f7c871d0837], err no job right now
+2023/07/08 08:24:33 Coordinator[]       workerMap: {
+        "17f57cc4-59b5-4291-8135-12488efb739b": {
+                "848632cb-1b69-49c6-b605-573185a10a68": {
+                        "ID": "848632cb-1b69-49c6-b605-573185a10a68",
+                        "FileName": "../pg-frankenstein.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": {
+                "e3fb636c-c2fa-4100-b20e-a1dc37245e11": {
+                        "ID": "e3fb636c-c2fa-4100-b20e-a1dc37245e11",
+                        "FileName": "../pg-huckleberry_finn.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "9b564017-c702-4863-a520-5dcac8b8842c": {},
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": {},
+        "fb26035a-d182-4374-b204-49f68e18262b": {
+                "10eb0acb-a938-4686-8ad5-06cd9a394d93": {
+                        "ID": "10eb0acb-a938-4686-8ad5-06cd9a394d93",
+                        "FileName": "../pg-metamorphosis.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        }
+}
+incall, err no job right now
+2023/07/08 08:24:33 WORKER[9b564017-c702-4863-a520-5dcac8b8842c]        no job
+2023/07/08 08:24:33 Coordinator[]       checkWorkerAliveness
+2023/07/08 08:24:33 Coordinator[]       liveness: map[4696cd59-2bc0-45cf-a7b1-bd9d49c789ac:true 9b564017-c702-4863-a520-5dcac8b8842c:true afb2cbc7-3471-4e75-b624-2aa3ec69bd7d:true]
+RPCMailBox: calling MarkHealthy for worker[afb2cbc7-3471-4e75-b624-2aa3ec69bd7d], req:[48b98fce-c71d-42a3-9f1d-dbecc27870d5]
+RPCMailBox: calling MarkHealthy for worker[4696cd59-2bc0-45cf-a7b1-bd9d49c789ac], req:[c9e0ed12-ef81-4093-9238-7427a8617a5b]
+2023/07/08 08:24:34 Coordinator[]       MarkHealthy is called for workerID: afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, ReqID: 48b98fce-c71d-42a3-9f1d-dbecc27870d5
+2023/07/08 08:24:34 Coordinator[]       got deadMap lock
+2023/07/08 08:24:34 Coordinator[]       healthy is marked: {
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": true,
+        "9b564017-c702-4863-a520-5dcac8b8842c": true,
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": false
+}
+2023/07/08 08:24:34 Coordinator[]       MarkHealthy is called for workerID: 4696cd59-2bc0-45cf-a7b1-bd9d49c789ac, ReqID: c9e0ed12-ef81-4093-9238-7427a8617a5b
+2023/07/08 08:24:34 Coordinator[]       got deadMap lock
+2023/07/08 08:24:34 Coordinator[]       healthy is marked: {
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": false,
+        "9b564017-c702-4863-a520-5dcac8b8842c": true,
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": false
+}
+2023/07/08 08:24:34 Coordinator[]       GetJobs is called for worker afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, req[e7187760-db19-4f42-b10f-52fc923a7486]
+2023/07/08 08:24:34 Coordinator[]       after isDonePhase check, worker afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, req[e7187760-db19-4f42-b10f-52fc923a7486]
+2023/07/08 08:24:34 Coordinator[]       after c.JobQueue.GetJob, worker afb2cbc7-3471-4e75-b624-2aa3ec69bd7d, req[e7187760-db19-4f42-b10f-52fc923a7486], err no job right now
+2023/07/08 08:24:34 Coordinator[]       workerMap: {
+        "17f57cc4-59b5-4291-8135-12488efb739b": {
+                "848632cb-1b69-49c6-b605-573185a10a68": {
+                        "ID": "848632cb-1b69-49c6-b605-573185a10a68",
+                        "FileName": "../pg-frankenstein.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": {
+                "e3fb636c-c2fa-4100-b20e-a1dc37245e11": {
+                        "ID": "e3fb636c-c2fa-4100-b20e-a1dc37245e11",
+                        "FileName": "../pg-huckleberry_finn.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "9b564017-c702-4863-a520-5dcac8b8842c": {},
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": {},
+        "fb26035a-d182-4374-b204-49f68e18262b": {
+                "10eb0acb-a938-4686-8ad5-06cd9a394d93": {
+                        "ID": "10eb0acb-a938-4686-8ad5-06cd9a394d93",
+                        "FileName": "../pg-metamorphosis.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        }
+}
+incall, err no job right now
+2023/07/08 08:24:34 WORKER[afb2cbc7-3471-4e75-b624-2aa3ec69bd7d]        no job
+2023/07/08 08:24:34 Coordinator[]       GetJobs is called for worker 9b564017-c702-4863-a520-5dcac8b8842c, req[f0aba809-026a-4c9a-b06d-7658cb57b397]
+2023/07/08 08:24:34 Coordinator[]       after isDonePhase check, worker 9b564017-c702-4863-a520-5dcac8b8842c, req[f0aba809-026a-4c9a-b06d-7658cb57b397]
+2023/07/08 08:24:34 Coordinator[]       after c.JobQueue.GetJob, worker 9b564017-c702-4863-a520-5dcac8b8842c, req[f0aba809-026a-4c9a-b06d-7658cb57b397], err no job right now
+2023/07/08 08:24:34 Coordinator[]       workerMap: {
+        "17f57cc4-59b5-4291-8135-12488efb739b": {
+                "848632cb-1b69-49c6-b605-573185a10a68": {
+                        "ID": "848632cb-1b69-49c6-b605-573185a10a68",
+                        "FileName": "../pg-frankenstein.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": {
+                "e3fb636c-c2fa-4100-b20e-a1dc37245e11": {
+                        "ID": "e3fb636c-c2fa-4100-b20e-a1dc37245e11",
+                        "FileName": "../pg-huckleberry_finn.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        },
+        "9b564017-c702-4863-a520-5dcac8b8842c": {},
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": {},
+        "fb26035a-d182-4374-b204-49f68e18262b": {
+                "10eb0acb-a938-4686-8ad5-06cd9a394d93": {
+                        "ID": "10eb0acb-a938-4686-8ad5-06cd9a394d93",
+                        "FileName": "../pg-metamorphosis.txt",
+                        "JobType": "TYPE_MAP",
+                        "ReduceNum": 0
+                }
+        }
+}
+incall, err no job right now
+2023/07/08 08:24:34 WORKER[9b564017-c702-4863-a520-5dcac8b8842c]        no job
+RPCMailBox: calling MarkHealthy for worker[9b564017-c702-4863-a520-5dcac8b8842c], req:[937c78e6-1cc8-48d6-a34f-f1357e7de69f]
+2023/07/08 08:24:34 Coordinator[]       MarkHealthy is called for workerID: 9b564017-c702-4863-a520-5dcac8b8842c, ReqID: 937c78e6-1cc8-48d6-a34f-f1357e7de69f
+2023/07/08 08:24:34 Coordinator[]       got deadMap lock
+2023/07/08 08:24:34 Coordinator[]       healthy is marked: {
+        "4696cd59-2bc0-45cf-a7b1-bd9d49c789ac": false,
+        "9b564017-c702-4863-a520-5dcac8b8842c": false,
+        "afb2cbc7-3471-4e75-b624-2aa3ec69bd7d": false
+}
+test-mr.sh: line 297: 21152 Terminated: 15          $TIMEOUT ../mrworker ../../mrapps/crash.so
+test-mr.sh: line 307: 21182 Terminated: 15          $TIMEOUT ../mrworker ../../mrapps/crash.so
+test-mr.sh: line 302: 21154 Terminated: 15          $TIMEOUT ../mrworker ../../mrapps/crash.so
+test-mr.sh: line 285: 21136 Terminated: 15          $TIMEOUT ../mrcoordinator ../pg*txt
+sort: No such file or directory
+cmp: EOF on mr-crash-all
+--- crash output is not the same as mr-correct-crash.txt
+--- crash test: FAIL
+*** FAILED SOME TESTS
+make: *** [mr/test/once] Error 1
+
+    ~/r/u/6.824/src    master wip !3 ?13                 2 ✘  20s   base   08:24:35  

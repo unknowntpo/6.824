@@ -261,7 +261,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	// [x y z]
 	// skip validation for healthcheck
 	// skip when prevLogIndex is 0 (it means it match)
-	if !isHeartBeat && args.PrevLogIndex != 0 && (!(rf.lastIdx() == args.PrevLogIndex) || rf.entries[args.PrevLogIndex].Term != args.PrevLogTerm) {
+	if !isHeartBeat && (args.PrevLogIndex != 0 &&
+		rf.lastIdx() >= args.PrevLogIndex && rf.entries[args.PrevLogIndex-rf.offset].Term != args.PrevLogTerm) {
+		rf.LogInfo("failed in last entry check: rf.entries%v", rf.entries)
 		reply.Success, reply.Term = false, rf.currentTerm
 		return
 	}
@@ -329,8 +331,9 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 	reply.Success, reply.Term = true, rf.currentTerm
 }
 
+// lastIdx returns the last index stores in raft log (not necessarily to be commited)
 func (rf *Raft) lastIdx() int {
-	return rf.offset + len(rf.entries)
+	return rf.offset + len(rf.entries) - 1
 }
 
 func min(l, r int) int {
@@ -460,19 +463,32 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 
 	entries := []Entry{{Term: rf.currentTerm, Cmd: command}}
 	rf.LogInfo("in Start, try to commit cmd: %v", entries)
+	all := len(rf.peers)
 	rf.mu.Unlock()
 
 	successChan := rf.handleAppendEntries(true, entries)
-	numOfSuccess := 0
+	numOfSuccess := 1
+	cnt := all
 	for success := range successChan {
 		if success {
+			rf.LogInfo("got 1 success")
 			numOfSuccess++
 		}
+		cnt--
+		if cnt == 0 {
+			close(successChan)
+			break
+		}
 	}
-	if rf.greaterThanMajority(numOfSuccess) {
+
+	rf.LogInfo("ZZZ judging")
+	if greaterThanMajority(all, numOfSuccess) {
 		rf.mu.Lock()
 		term := rf.currentTerm
 		// FIXME: what is the index of this command ?
+		rf.commitIndex = rf.commitIndex + len(entries)
+		index = rf.commitIndex
+		rf.LogInfo("KKK in Start, done committed cmd: %v, index: %v, term: %v, isLeader: %v", entries, index, term, isLeader)
 		rf.mu.Unlock()
 		return index, term, isLeader
 	}
@@ -483,7 +499,6 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	// 		return index, term, isLeader
 	// 	}
 	// }
-	rf.LogInfo("in Start, done committed cmd: %v", entries)
 
 	return index, term, isLeader
 }
@@ -575,7 +590,7 @@ func (rf *Raft) handleHealthcheck(needLock bool) error {
 // • If there exists an N such that N > commitIndex, a majority
 // of matchIndex[i] ≥ N, and log[N].term == currentTerm:
 // set commitIndex = N (§5.3, §5.4).
-func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) <-chan bool {
+func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) chan bool {
 	if needLock {
 		rf.mu.Lock()
 		defer rf.mu.Unlock()
@@ -589,6 +604,8 @@ func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) <-chan bool 
 	currentTerm := rf.currentTerm
 
 	rf.entries = append(rf.entries, entries...)
+
+	rf.LogInfo("entries to be replicated: %v", rf.entries)
 	leaderLastEntryIndex := rf.lastIdx()
 	// numOfSuccess := 1
 	successChan := make(chan bool, len(rf.peers))
@@ -617,7 +634,14 @@ func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) <-chan bool 
 
 			rf.mu.Lock()
 			prevLogIndex := rf.nextIdxs[srvID] - 1
-			prevLogEntry := rf.entries[prevLogIndex-rf.offset]
+			// first log entry to be replicated
+			var prevLogEntry Entry
+			if prevLogIndex == 0 {
+				prevLogEntry = Entry{}
+			} else {
+				prevLogEntry = rf.entries[prevLogIndex-rf.offset]
+			}
+
 			rf.LogInfo("XXX prevLogIndex: %v", prevLogIndex)
 			rf.LogInfo("XXX prevLogEntries: %v", prevLogEntry)
 
@@ -625,8 +649,10 @@ func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) <-chan bool 
 			// [][x=1][][], prevLogIndex = 1
 			// len(rf.entries) - 1 - rf.matchIdxs[srviD] + 1
 			// 2 - 1 - 0 + 1
+
+			// leaderLastEntryIndex == 2
 			entries := make([]Entry, leaderLastEntryIndex-rf.matchIdxs[srvID])
-			copy(entries, rf.entries[rf.offset+rf.matchIdxs[srvID]+1:])
+			copy(entries, rf.entries[rf.matchIdxs[srvID]+1-rf.offset:])
 
 			rf.LogInfo("XXX entries to send to srv [%v]: %v", srvID, entries)
 			rf.mu.Unlock()
@@ -648,7 +674,10 @@ func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) <-chan bool 
 				rf.mu.Lock()
 				defer rf.mu.Unlock()
 
-				rf.nextIdxs[srvID] = prevLogIndex + len(entries)
+				rf.LogInfo("in worker, success: srvID: %v", srvID)
+
+				rf.nextIdxs[srvID] = prevLogIndex + len(entries) + 1
+				rf.matchIdxs[srvID] = prevLogIndex + len(entries)
 				successChan <- true
 				return
 			} else {
@@ -679,15 +708,16 @@ func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) <-chan bool 
 
 	rf.electionTimer.Reset(genElectionTimeout())
 
-	// rf.LogInfo("numOfSuccess: %v", numOfSuccess)
-	// if !rf.greaterThanMajority(numOfSuccess) {
-	// 	return ErrFailedToReplicate
-	// }
-	return nil
+	return successChan
 }
 
 func (rf *Raft) greaterThanMajority(val int) bool {
 	majority := len(rf.peers) / 2
+	return val > majority
+}
+
+func greaterThanMajority(all, val int) bool {
+	majority := all / 2
 	return val > majority
 }
 
