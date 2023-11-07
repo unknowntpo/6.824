@@ -330,7 +330,7 @@ func (rf *Raft) AppendEntries(args *AppendEntriesArgs, reply *AppendEntriesReply
 }
 
 func (rf *Raft) lastIdx() int {
-	return rf.offset + len(rf.entries) - 1
+	return rf.offset + len(rf.entries)
 }
 
 func min(l, r int) int {
@@ -445,7 +445,6 @@ const B2 = 1
 // the leader.
 func (rf *Raft) Start(command interface{}) (int, int, bool) {
 	rf.mu.Lock()
-	defer rf.mu.Unlock()
 
 	index := -1
 	term := rf.currentTerm
@@ -455,17 +454,35 @@ func (rf *Raft) Start(command interface{}) (int, int, bool) {
 
 	// Your code here (2B).
 	if !rf.isLeader(false) {
+		rf.mu.Unlock()
 		return index, term, false
 	}
 
 	entries := []Entry{{Term: rf.currentTerm, Cmd: command}}
 	rf.LogInfo("in Start, try to commit cmd: %v", entries)
+	rf.mu.Unlock()
 
-	if err := rf.handleAppendEntries(false, entries); err != nil {
-		if errors.Is(err, ErrFailedToReplicate) {
-			return index, term, true
+	successChan := rf.handleAppendEntries(true, entries)
+	numOfSuccess := 0
+	for success := range successChan {
+		if success {
+			numOfSuccess++
 		}
 	}
+	if rf.greaterThanMajority(numOfSuccess) {
+		rf.mu.Lock()
+		term := rf.currentTerm
+		// FIXME: what is the index of this command ?
+		rf.mu.Unlock()
+		return index, term, isLeader
+	}
+
+	// if err := rf.handleAppendEntries(true, entries); err != nil {
+	// 	if errors.Is(err, ErrFailedToReplicate) {
+	// 		rf.LogError("failed to replicate")
+	// 		return index, term, isLeader
+	// 	}
+	// }
 	rf.LogInfo("in Start, done committed cmd: %v", entries)
 
 	return index, term, isLeader
@@ -558,7 +575,7 @@ func (rf *Raft) handleHealthcheck(needLock bool) error {
 // • If there exists an N such that N > commitIndex, a majority
 // of matchIndex[i] ≥ N, and log[N].term == currentTerm:
 // set commitIndex = N (§5.3, §5.4).
-func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) error {
+func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) <-chan bool {
 	if needLock {
 		rf.mu.Lock()
 		defer rf.mu.Unlock()
@@ -572,11 +589,12 @@ func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) error {
 	currentTerm := rf.currentTerm
 
 	rf.entries = append(rf.entries, entries...)
-	leaderLastEntryIndex := len(rf.entries) - 1
-	numOfSuccess := 1
+	leaderLastEntryIndex := rf.lastIdx()
+	// numOfSuccess := 1
+	successChan := make(chan bool, len(rf.peers))
+	successChan <- true
 
-	var wg sync.WaitGroup
-
+	// var wg sync.WaitGroup
 	for srvID := range rf.peers {
 		if srvID == rf.me {
 			continue
@@ -586,19 +604,20 @@ func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) error {
 		if !(leaderLastEntryIndex >= rf.nextIdxs[srvID]) {
 			continue
 		}
+		rf.LogInfo("XXX need to do replicate to %v", srvID)
+		// wg.Add(1)
 		go func(srvID int, me int) {
+			// defer wg.Done()
 			tryCnt := 3
 		BEGIN:
 			if tryCnt == 0 {
+				successChan <- false
 				return
 			}
-			time.Sleep(1 * time.Second)
 
 			rf.mu.Lock()
 			prevLogIndex := rf.nextIdxs[srvID] - 1
-			prevLogEntry := rf.entries[prevLogIndex]
-			rf.mu.Unlock()
-
+			prevLogEntry := rf.entries[prevLogIndex-rf.offset]
 			rf.LogInfo("XXX prevLogIndex: %v", prevLogIndex)
 			rf.LogInfo("XXX prevLogEntries: %v", prevLogEntry)
 
@@ -607,7 +626,11 @@ func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) error {
 			// len(rf.entries) - 1 - rf.matchIdxs[srviD] + 1
 			// 2 - 1 - 0 + 1
 			entries := make([]Entry, leaderLastEntryIndex-rf.matchIdxs[srvID])
-			copy(entries, rf.entries[rf.matchIdxs[srvID]+rf.offset:])
+			copy(entries, rf.entries[rf.offset+rf.matchIdxs[srvID]+1:])
+
+			rf.LogInfo("XXX entries to send to srv [%v]: %v", srvID, entries)
+			rf.mu.Unlock()
+
 			args := AppendEntriesArgs{
 				LeaderID:     me,
 				Term:         currentTerm,
@@ -626,42 +649,40 @@ func (rf *Raft) handleAppendEntries(needLock bool, entries []Entry) error {
 				defer rf.mu.Unlock()
 
 				rf.nextIdxs[srvID] = prevLogIndex + len(entries)
-				numOfSuccess++
-				if rf.greaterThanMajority(numOfSuccess) {
-					// signal the waiter to commit
-					return
-				}
+				successChan <- true
 				return
 			} else {
 				rf.mu.Lock()
-				defer rf.mu.Unlock()
-
 				rf.LogInfo("XXX appendEntries failed: got term: %v", reply.Term)
 				if rf.currentTerm < reply.Term {
 					// we are outdated, become follower
 					rf.state = STATE_FOLLOWER
 					rf.currentTerm, rf.votedFor = reply.Term, votedForNull
 					rf.electionTimer.Reset(genElectionTimeout())
+					rf.mu.Unlock()
 					return
 				}
 				// if failed, we should decrement prevLogEntries and try again
 				rf.nextIdxs[srvID]--
 
 				tryCnt--
+				rf.mu.Unlock()
 				goto BEGIN
 			}
 		}(srvID, me)
 	}
 
-	wg.Wait()
+	// wait from success (gt majority) or failed (some failed)
+	// wg.Wait()
 
 	rf.LogInfo("Done appendEntries")
 
 	rf.electionTimer.Reset(genElectionTimeout())
 
-	if !rf.greaterThanMajority(numOfSuccess) {
-		return ErrFailedToReplicate
-	}
+	// rf.LogInfo("numOfSuccess: %v", numOfSuccess)
+	// if !rf.greaterThanMajority(numOfSuccess) {
+	// 	return ErrFailedToReplicate
+	// }
 	return nil
 }
 
@@ -680,7 +701,7 @@ func (rf *Raft) changeToLeader(needLock bool) {
 		// 0 [1 2 3]
 		// len: 4
 		// nextIdxs = 4
-		rf.nextIdxs[srvID] = rf.offset + len(rf.entries)
+		rf.nextIdxs[srvID] = rf.lastIdx() + 1
 		rf.matchIdxs[srvID] = 0
 	}
 	rf.LogInfo("rf.entries: %v", rf.entries)
